@@ -1,0 +1,16 @@
+{
+  "name": "lifetime-income-planner-e2e",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "test": "./scripts/run-tests.sh",
+    "test:no-servers": "SKIP_SERVERS=1 ./scripts/run-tests.sh",
+    "playwright": "npx playwright test",
+    "report": "npx playwright show-report"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.49.0",
+    "@types/node": "^22.0.0",
+    "typescript": "^5.7.0"
+  }
+}

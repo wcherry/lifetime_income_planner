@@ -1,0 +1,152 @@
+// @generated automatically by Diesel CLI.
+
+diesel::table! {
+    accounts (id) {
+        id -> Text,
+        user_id -> Text,
+        name -> Text,
+        category -> Text,
+        account_type -> Text,
+        owner -> Text,
+        current_balance -> Double,
+        expected_roi -> Double,
+        dividend_yield -> Double,
+        cost_basis -> Nullable<Double>,
+        allocation_stock_pct -> Nullable<Integer>,
+        allocation_bond_pct -> Nullable<Integer>,
+        allocation_cash_pct -> Nullable<Integer>,
+        withdrawal_restrictions -> Nullable<Text>,
+        created_at -> Timestamp,
+        updated_at -> Timestamp,
+    }
+}
+
+diesel::table! {
+    assumptions (id) {
+        id -> Text,
+        user_id -> Text,
+        inflation_rate -> Double,
+        investment_return_rate -> Double,
+        healthcare_inflation_rate -> Double,
+        social_security_cola_rate -> Double,
+        created_at -> Timestamp,
+        updated_at -> Timestamp,
+    }
+}
+
+diesel::table! {
+    income_sources (id) {
+        id -> Text,
+        user_id -> Text,
+        name -> Text,
+        income_type -> Text,
+        owner -> Text,
+        amount -> Double,
+        frequency -> Text,
+        start_date -> Date,
+        end_date -> Nullable<Date>,
+        growth_rate -> Double,
+        cola -> Bool,
+        taxability -> Text,
+        notes -> Nullable<Text>,
+        created_at -> Timestamp,
+        updated_at -> Timestamp,
+    }
+}
+
+diesel::table! {
+    life_events (id) {
+        id -> Text,
+        user_id -> Text,
+        name -> Text,
+        event_type -> Text,
+        event_date -> Date,
+        direction -> Text,
+        amount -> Double,
+        taxable -> Bool,
+        inflation_adjusted -> Bool,
+        recurrence -> Text,
+        end_date -> Nullable<Date>,
+        notes -> Nullable<Text>,
+        created_at -> Timestamp,
+        updated_at -> Timestamp,
+    }
+}
+
+diesel::table! {
+    plans (id) {
+        id -> Text,
+        user_id -> Text,
+        name -> Text,
+        snapshot -> Text,
+        created_at -> Timestamp,
+        updated_at -> Timestamp,
+    }
+}
+
+diesel::table! {
+    profiles (id) {
+        id -> Text,
+        user_id -> Text,
+        first_name -> Text,
+        last_name -> Text,
+        date_of_birth -> Date,
+        marital_status -> Text,
+        filing_status -> Text,
+        state -> Text,
+        retirement_date -> Date,
+        life_expectancy -> Integer,
+        spouse_first_name -> Nullable<Text>,
+        spouse_last_name -> Nullable<Text>,
+        spouse_date_of_birth -> Nullable<Date>,
+        spouse_life_expectancy -> Nullable<Integer>,
+        created_at -> Timestamp,
+        updated_at -> Timestamp,
+    }
+}
+
+diesel::table! {
+    spending_items (id) {
+        id -> Text,
+        user_id -> Text,
+        name -> Text,
+        category -> Text,
+        amount -> Double,
+        frequency -> Text,
+        inflation_adjusted -> Bool,
+        start_year -> Nullable<Integer>,
+        end_year -> Nullable<Integer>,
+        notes -> Nullable<Text>,
+        created_at -> Timestamp,
+        updated_at -> Timestamp,
+    }
+}
+
+diesel::table! {
+    users (id) {
+        id -> Text,
+        email -> Text,
+        password_hash -> Text,
+        created_at -> Timestamp,
+        updated_at -> Timestamp,
+    }
+}
+
+diesel::joinable!(accounts -> users (user_id));
+diesel::joinable!(assumptions -> users (user_id));
+diesel::joinable!(income_sources -> users (user_id));
+diesel::joinable!(life_events -> users (user_id));
+diesel::joinable!(plans -> users (user_id));
+diesel::joinable!(profiles -> users (user_id));
+diesel::joinable!(spending_items -> users (user_id));
+
+diesel::allow_tables_to_appear_in_same_query!(
+    accounts,
+    assumptions,
+    income_sources,
+    life_events,
+    plans,
+    profiles,
+    spending_items,
+    users,
+);

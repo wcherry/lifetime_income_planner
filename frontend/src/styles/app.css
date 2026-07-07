@@ -1,0 +1,771 @@
+:root {
+  --bg: #0f172a;
+  --surface: #1e293b;
+  --surface-2: #273449;
+  --border: #334155;
+  --text: #e2e8f0;
+  --muted: #94a3b8;
+  --primary: #2dd4bf;
+  --primary-ink: #042f2e;
+  --error-bg: #7f1d1d;
+  --error-text: #fecaca;
+  --success-bg: #14532d;
+  --success-text: #bbf7d0;
+  --radius: 10px;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family:
+    system-ui,
+    -apple-system,
+    "Segoe UI",
+    Roboto,
+    sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  line-height: 1.5;
+}
+
+a {
+  color: var(--primary);
+}
+
+.app-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1rem 1.5rem;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+}
+
+.brand {
+  font-weight: 700;
+  text-decoration: none;
+  color: var(--text);
+}
+
+.header-left {
+  display: flex;
+  align-items: center;
+  gap: 1.5rem;
+}
+
+.main-nav {
+  display: flex;
+  gap: 1rem;
+}
+
+.main-nav a {
+  color: var(--muted);
+  text-decoration: none;
+  font-size: 0.92rem;
+  font-weight: 600;
+  padding: 0.25rem 0;
+  border-bottom: 2px solid transparent;
+}
+
+.main-nav a.active {
+  color: var(--text);
+  border-bottom-color: var(--primary);
+}
+
+.header-right {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.app-main {
+  max-width: 760px;
+  margin: 2rem auto;
+  padding: 0 1.25rem;
+}
+
+/* The projection is data-dense (wide year-by-year table); give it more room
+   than the form-based pages so columns aren't cut off. */
+.app-main:has(.projection-page) {
+  max-width: min(1200px, 95vw);
+}
+
+.auth-shell {
+  max-width: 420px;
+  margin: 4rem auto;
+  padding: 0 1.25rem;
+}
+
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 1.75rem;
+}
+
+.card-title {
+  margin: 0 0 0.25rem;
+  font-size: 1.4rem;
+}
+
+.muted {
+  color: var(--muted);
+}
+
+.center {
+  text-align: center;
+}
+
+.switch-line {
+  margin-top: 1.25rem;
+  font-size: 0.92rem;
+}
+
+form {
+  margin-top: 1.25rem;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  margin-bottom: 1rem;
+}
+
+.field label {
+  font-size: 0.85rem;
+  font-weight: 600;
+  margin-bottom: 0.35rem;
+}
+
+.field-hint {
+  font-size: 0.78rem;
+  color: var(--muted);
+  margin-top: 0.3rem;
+}
+
+.input {
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text);
+  padding: 0.6rem 0.7rem;
+  font-size: 0.95rem;
+  width: 100%;
+}
+
+.input:focus {
+  outline: none;
+  border-color: var(--primary);
+}
+
+.grid-2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0 1rem;
+}
+
+.grid-3 {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 0 1rem;
+}
+
+@media (max-width: 520px) {
+  .grid-2,
+  .grid-3 {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Accounts */
+.stack {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.page-head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.page-head h1 {
+  margin: 0 0 0.25rem;
+  font-size: 1.6rem;
+}
+
+.account-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.account-row {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 0.9rem 1.1rem;
+}
+
+.account-main {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.account-name {
+  font-weight: 600;
+}
+
+.account-meta {
+  font-size: 0.82rem;
+}
+
+.account-figures {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.account-balance {
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.account-actions {
+  display: flex;
+  gap: 0.4rem;
+}
+
+.account-actions .btn {
+  padding: 0.4rem 0.7rem;
+  font-size: 0.85rem;
+}
+
+.form-actions {
+  display: flex;
+  gap: 0.6rem;
+  margin-top: 0.5rem;
+}
+
+.checkbox-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.9rem;
+  margin: 0.25rem 0 1rem;
+  cursor: pointer;
+}
+
+@media (max-width: 560px) {
+  .account-row {
+    flex-wrap: wrap;
+  }
+  .account-figures {
+    align-items: flex-start;
+    text-align: left;
+  }
+}
+
+.spouse {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 1rem 1rem 0.25rem;
+  margin: 0.5rem 0 1.25rem;
+}
+
+.spouse legend {
+  padding: 0 0.5rem;
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+
+.btn {
+  border: none;
+  border-radius: 8px;
+  padding: 0.65rem 1.1rem;
+  font-size: 0.95rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.btn:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.btn-primary {
+  background: var(--primary);
+  color: var(--primary-ink);
+}
+
+.btn-ghost {
+  background: transparent;
+  color: var(--text);
+  border: 1px solid var(--border);
+}
+
+.alert {
+  border-radius: 8px;
+  padding: 0.65rem 0.8rem;
+  margin-bottom: 1rem;
+  font-size: 0.9rem;
+}
+
+.alert-error {
+  background: var(--error-bg);
+  color: var(--error-text);
+}
+
+.alert-success {
+  background: var(--success-bg);
+  color: var(--success-text);
+}
+
+/* Projection — summary tiles */
+.tile-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 0.75rem;
+}
+
+.tile {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 1rem 1.1rem;
+}
+
+.tile-label {
+  font-size: 0.78rem;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.tile-value {
+  font-size: 1.4rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.tile-value-sm {
+  font-size: 1.05rem;
+}
+
+.tile-good {
+  border-color: var(--success-text);
+}
+
+.tile-good .tile-value {
+  color: var(--success-text);
+}
+
+.tile-warn {
+  border-color: var(--error-text);
+}
+
+.tile-warn .tile-value {
+  color: var(--error-text);
+}
+
+@media (max-width: 700px) {
+  .tile-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+/* Projection — quarterly withdrawal schedule */
+.quarter-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 0.75rem;
+  margin-top: 1rem;
+}
+
+.quarter-card {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 0.9rem 1rem;
+  background: var(--surface-2);
+}
+
+.quarter-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: 0.5rem;
+}
+
+.quarter-label {
+  font-weight: 700;
+}
+
+.quarter-total {
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--primary);
+}
+
+.quarter-lines {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.quarter-lines li {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: baseline;
+  column-gap: 0.5rem;
+  font-size: 0.9rem;
+}
+
+.quarter-cat {
+  font-size: 0.78rem;
+  grid-column: 1;
+}
+
+.quarter-amt {
+  grid-column: 2;
+  grid-row: 1 / span 2;
+  align-self: center;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+@media (max-width: 560px) {
+  .quarter-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Projection — annual table */
+.table-scroll {
+  overflow-x: auto;
+  margin-top: 1rem;
+}
+
+.proj-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.88rem;
+  white-space: nowrap;
+}
+
+.proj-table th,
+.proj-table td {
+  padding: 0.5rem 0.6rem;
+  border-bottom: 1px solid var(--border);
+  text-align: left;
+}
+
+.proj-table th {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--muted);
+  position: sticky;
+  top: 0;
+  background: var(--surface);
+}
+
+.proj-table .num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.proj-table .row-warn td {
+  background: var(--error-bg);
+  color: var(--error-text);
+}
+
+/* Net worth chart */
+.chart {
+  position: relative;
+  width: 100%;
+  margin-top: 1rem;
+  touch-action: none;
+}
+
+.chart svg {
+  display: block;
+  overflow: visible;
+}
+
+.chart-grid {
+  stroke: var(--border);
+  stroke-width: 1;
+}
+
+.chart-tick {
+  fill: var(--muted);
+  font-size: 0.72rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.chart-area {
+  fill: var(--primary);
+  opacity: 0.1;
+}
+
+.chart-line {
+  fill: none;
+  stroke: var(--primary);
+  stroke-width: 2;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+
+.chart-end-dot,
+.chart-hover-dot {
+  fill: var(--primary);
+  stroke: var(--surface);
+  stroke-width: 2;
+}
+
+.chart-end-label {
+  fill: var(--text);
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.chart-crosshair {
+  stroke: var(--muted);
+  stroke-width: 1;
+}
+
+.chart-depletion {
+  stroke: var(--error-text);
+  stroke-width: 1;
+  stroke-dasharray: 3 3;
+  opacity: 0.7;
+}
+
+.chart-depletion-dot {
+  fill: var(--error-text);
+  stroke: var(--surface);
+  stroke-width: 2;
+}
+
+.chart-tooltip {
+  position: absolute;
+  top: 0.25rem;
+  transform: translateX(-50%);
+  pointer-events: none;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.4rem 0.6rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  white-space: nowrap;
+}
+
+.chart-tooltip-value {
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.chart-tooltip-meta {
+  font-size: 0.75rem;
+  color: var(--muted);
+}
+
+/* Life-event markers on the chart */
+.chart-event {
+  cursor: pointer;
+}
+
+.chart-event-hit {
+  fill: transparent;
+}
+
+.chart-event-dot {
+  stroke: var(--surface);
+  stroke-width: 2;
+}
+
+.chart-event-in .chart-event-dot {
+  fill: #10b981;
+}
+
+.chart-event-out .chart-event-dot {
+  fill: #ef4444;
+}
+
+.chart-event-glyph {
+  fill: #fff;
+  font-size: 0.7rem;
+  font-weight: 700;
+  pointer-events: none;
+}
+
+.chart-event-tooltip {
+  transform: translate(-50%, -100%);
+}
+
+.chart-event-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.9rem;
+  white-space: nowrap;
+}
+
+.chart-event-name {
+  color: var(--text);
+}
+
+.chart-event-amt {
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.chart-event-amt-in {
+  color: #34d399;
+}
+
+.chart-event-amt-out {
+  color: #f87171;
+}
+
+/* Milestone flags on the chart */
+.chart-milestone {
+  cursor: pointer;
+}
+
+.chart-milestone-hit {
+  fill: transparent;
+}
+
+.chart-milestone-guide {
+  stroke: #a78bfa;
+  stroke-width: 1;
+  stroke-dasharray: 2 3;
+  opacity: 0.25;
+}
+
+.chart-milestone-pole {
+  stroke: #a78bfa;
+  stroke-width: 1.5;
+  stroke-linecap: round;
+}
+
+.chart-milestone-flag {
+  fill: #a78bfa;
+}
+
+.chart-milestone:hover .chart-milestone-guide {
+  opacity: 0.6;
+}
+
+.chart-milestone-tooltip {
+  transform: translateX(-50%);
+  max-width: 240px;
+  white-space: normal;
+}
+
+.chart-milestone-row {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+}
+
+.chart-milestone-row + .chart-milestone-row {
+  margin-top: 0.4rem;
+  padding-top: 0.4rem;
+  border-top: 1px solid var(--border);
+}
+
+.chart-milestone-label {
+  font-weight: 700;
+  color: #c4b5fd;
+}
+
+.chart-milestone-detail {
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+
+/* Life-event badges in the projection table */
+.event-badges {
+  display: inline-flex;
+  gap: 4px;
+  align-items: center;
+}
+
+.milestone-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 4px;
+  font-size: 0.7rem;
+  background: #a78bfa;
+  color: #1e1b4b;
+  cursor: default;
+}
+
+/* Inline legend keys in the chart caption */
+.legend-key {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  font-size: 0.68rem;
+  font-weight: 700;
+  color: #fff;
+  vertical-align: middle;
+}
+
+.legend-key-in {
+  background: #10b981;
+  border-radius: 50%;
+}
+
+.legend-key-flag {
+  background: #a78bfa;
+  color: #1e1b4b;
+  border-radius: 4px;
+}
+
+.event-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: #fff;
+  cursor: default;
+}
+
+.event-badge-in {
+  background: #10b981;
+}
+
+.event-badge-out {
+  background: #ef4444;
+}
