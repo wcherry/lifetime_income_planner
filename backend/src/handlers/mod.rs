@@ -7,4 +7,5 @@ pub mod life_event;
 pub mod plan;
 pub mod profile;
 pub mod projection;
+pub mod reports;
 pub mod spending;

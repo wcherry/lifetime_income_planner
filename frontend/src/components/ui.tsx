@@ -1,3 +1,4 @@
+import { useState } from "react";
 import type {
   ButtonHTMLAttributes,
   InputHTMLAttributes,
@@ -66,14 +67,39 @@ export function Alert({
 export function Card({
   title,
   children,
+  collapsible,
+  defaultOpen = true,
 }: {
   title?: string;
   children: ReactNode;
+  collapsible?: boolean;
+  defaultOpen?: boolean;
 }) {
+  const [open, setOpen] = useState(defaultOpen);
+
+  if (!collapsible || !title) {
+    return (
+      <div className="card">
+        {title && <h2 className="card-title">{title}</h2>}
+        {children}
+      </div>
+    );
+  }
+
   return (
     <div className="card">
-      {title && <h2 className="card-title">{title}</h2>}
-      {children}
+      <button
+        type="button"
+        className="card-title card-title-toggle"
+        aria-expanded={open}
+        onClick={() => setOpen((o) => !o)}
+      >
+        <span className={`card-chevron${open ? " card-chevron-open" : ""}`} aria-hidden="true">
+          ▸
+        </span>
+        {title}
+      </button>
+      {open && <div className="card-body">{children}</div>}
     </div>
   );
 }

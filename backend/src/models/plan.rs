@@ -62,6 +62,18 @@ pub struct AssumptionsSnapshot {
     pub investment_return_rate: f64,
     pub healthcare_inflation_rate: f64,
     pub social_security_cola_rate: f64,
+    // Roth conversion strategy (feature 6). Defaulted so plans saved before the
+    // feature existed still load.
+    #[serde(default)]
+    pub roth_conversion_ceiling: f64,
+    #[serde(default)]
+    pub roth_conversion_start_year: Option<i32>,
+    #[serde(default)]
+    pub roth_conversion_end_year: Option<i32>,
+    // Withdrawal sequencing strategy (feature 9). Defaulted so plans saved
+    // before the feature existed still load.
+    #[serde(default)]
+    pub withdrawal_strategy: String,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -193,6 +205,10 @@ impl From<&Assumptions> for AssumptionsSnapshot {
             investment_return_rate: a.investment_return_rate,
             healthcare_inflation_rate: a.healthcare_inflation_rate,
             social_security_cola_rate: a.social_security_cola_rate,
+            roth_conversion_ceiling: a.roth_conversion_ceiling,
+            roth_conversion_start_year: a.roth_conversion_start_year,
+            roth_conversion_end_year: a.roth_conversion_end_year,
+            withdrawal_strategy: a.withdrawal_strategy.clone(),
         }
     }
 }
@@ -300,6 +316,10 @@ impl AssumptionsSnapshot {
             healthcare_inflation_rate: self.healthcare_inflation_rate,
             social_security_cola_rate: self.social_security_cola_rate,
             updated_at: now,
+            roth_conversion_ceiling: self.roth_conversion_ceiling,
+            roth_conversion_start_year: self.roth_conversion_start_year,
+            roth_conversion_end_year: self.roth_conversion_end_year,
+            withdrawal_strategy: self.withdrawal_strategy.clone(),
         }
     }
 }

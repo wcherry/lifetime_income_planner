@@ -6,6 +6,86 @@ the full product vision and phased roadmap.
 
 ## Status
 
+**Phase 2 (Tax Optimization) complete — all 9 features.** The
+projection engine is now tax-aware. A pure, unit-tested tax engine
+(`backend/src/tax.rs`) computes each projection year's liability and the
+engine funds that tax from account withdrawals:
+
+1. **Federal tax calculations** — progressive 2025 ordinary-income brackets by
+   filing status with the standard deduction (plus the age-65 add-on), all
+   inflation-indexed across the projection horizon.
+2. **State tax calculations** — each state is modeled on its **own** base, not
+   as a flat rate on the federal figure: its own brackets and standard
+   deduction, Social Security exempt (as in most states), and long-term gains
+   and qualified dividends taxed as ordinary income (no federal-style 0/15/20%
+   preferential rate). **California** carries its full progressive 1%–12.3%
+   schedule per filing status; the remaining states are single-bracket flat-rate
+   approximations for now (0% for the nine no-income-tax states), ready to be
+   upgraded to full schedules by adding rows.
+
+The brackets, rates, standard deductions, Social Security thresholds, and state
+schedules are **not hard-coded into the calculation** — they live in dedicated
+database tables (`tax_brackets`, `tax_filing_params`, `state_tax_brackets`,
+`state_tax_params`), seeded at startup from the app's built-in 2025 figures
+(`backend/src/tax.rs`) and read per request by the tax engine. Editing a row
+changes the next projection immediately; re-seeding is a no-op once populated,
+so future admin edits are preserved. (An admin role to manage these tables
+through the UI arrives in a later phase.)
+3. **Capital gains handling** — per-account cost-basis tracking realizes
+   long-term gains on taxable-account withdrawals, taxed at the preferential
+   0/15/20% rates stacked on top of ordinary income.
+4. **Qualified dividends** — taxable-account dividend yield is booked as
+   qualified dividends each year (added to cost basis as reinvested) and taxed
+   at the same preferential rates.
+5. **Social Security taxation** — the provisional-income worksheet makes up to
+   85% of benefits taxable; those thresholds are intentionally *not* indexed
+   (as in statute), so a growing share becomes taxable over time.
+
+Because a tax-deferred withdrawal is itself taxable income, each year's
+withdrawal and tax are solved together by a short fixed-point iteration. The
+projection response now carries a full per-year tax breakdown, an estimated
+tax per quarter, and lifetime federal/state/total tax totals, all surfaced on
+the **Plan** page: a lifetime-tax tile, a per-quarter estimated-tax line, a
+Taxes column in the year-by-year table, and a current-year tax-breakdown card
+that shows parallel federal and state taxable-income buildups alongside a
+Federal · State · Combined comparison of tax owed and effective/marginal rates
+(with a reserved row for property taxes, coming in a later milestone).
+
+6. **Roth conversion modeling** — an optional strategy (set on the
+   **Assumptions** page) converts traditional (tax-deferred) savings to Roth
+   (tax-free) each year until taxable income reaches a target ceiling, over an
+   optional year window. Converted dollars are booked as ordinary income (so the
+   tax is funded like any other cash need) and moved into the first Roth account;
+   the engine reports the per-year conversion, a lifetime-conversions tile, and a
+   Roth-conversion column in the year-by-year table. This lets a user fill
+   low-income years before RMDs and Social Security push them into higher
+   brackets.
+7. **Estimated quarterly taxes** — the current year's projected liability is
+   split into the four IRS Form 1040-ES installments with their due dates
+   (Apr 15 / Jun 15 / Sep 15 / Jan 15), shown on the Plan page as dated payment
+   vouchers.
+
+8. **Tax reporting** — a dedicated **Tax report** card on the Plan page shows
+   the full federal/state tax breakdown for *every* projected year (not just
+   the current one, unlike the single-year tax-breakdown card above), and a
+   **Download CSV** button (`GET /api/reports/tax-summary.csv`) exports it as a
+   portable document a user can hand to an accountant or load into a
+   spreadsheet.
+9. **Withdrawal sequencing optimization** — an optional strategy (set on the
+   **Assumptions** page, alongside Roth conversions) that improves on the
+   conventional taxable → tax-deferred → tax-free order in two ways: it
+   realizes the *lowest-embedded-gain* taxable lots first (minimizing capital
+   gains for a given draw), and in years where the marginal cost of realizing
+   a taxable gain would exceed the marginal ordinary rate a tax-deferred
+   withdrawal would face — comparing capital-gains and ordinary bracket
+   positions via the same baseline-tax-position technique the Roth conversion
+   strategy uses — it draws tax-deferred funds first instead. Each year's
+   chosen order is reported (`withdrawal_order`) and shown in the Tax report.
+
+Phase 2 is feature-complete: federal/state/capital-gains/dividend/Social
+Security taxation, Roth conversions, estimated quarterly taxes, tax reporting,
+and tax-optimized withdrawal sequencing.
+
 **Phase 1 (Financial Foundation / MVP) complete.** Implemented:
 
 1. **User accounts and authentication** — email/password registration and login,

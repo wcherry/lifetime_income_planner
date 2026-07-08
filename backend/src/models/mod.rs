@@ -6,6 +6,7 @@ pub mod plan;
 pub mod profile;
 pub mod projection;
 pub mod spending;
+pub mod tax;
 pub mod user;
 
 pub use account::*;
@@ -16,4 +17,5 @@ pub use plan::*;
 pub use profile::*;
 pub use projection::*;
 pub use spending::*;
+pub use tax::*;
 pub use user::*;

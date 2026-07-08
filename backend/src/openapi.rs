@@ -9,7 +9,7 @@ use crate::models;
     info(
         title = "Lifetime Income Planner API",
         version = "0.1.0",
-        description = "Retirement planning platform — Phase 1: accounts, authentication, and retirement profile setup."
+        description = "Retirement planning platform — Phase 1 (foundation) plus Phase 2 tax-aware projections (federal/state tax, capital gains, qualified dividends, Social Security taxation)."
     ),
     paths(
         handlers::health::health,
@@ -38,6 +38,7 @@ use crate::models;
         handlers::assumptions::get_assumptions,
         handlers::assumptions::upsert_assumptions,
         handlers::projection::get_projection,
+        handlers::reports::get_tax_summary_csv,
         handlers::plan::list_plans,
         handlers::plan::save_plan,
         handlers::plan::rename_plan,
@@ -75,14 +76,18 @@ use crate::models;
         models::EventRecurrence,
         models::AssumptionsRequest,
         models::AssumptionsResponse,
+        models::WithdrawalStrategy,
         models::ProjectionResponse,
         models::ProjectionAssumptions,
         models::ProjectionSummary,
         models::YearProjection,
+        models::YearTax,
         models::LifeEventOccurrence,
         models::Milestone,
         models::QuarterProjection,
         models::QuarterWithdrawal,
+        models::EstimatedTaxes,
+        models::EstimatedTaxPayment,
         models::SavePlanRequest,
         models::PlanResponse,
         models::PlanContents,
@@ -96,7 +101,8 @@ use crate::models;
         (name = "income", description = "Income sources"),
         (name = "life_events", description = "Life events engine"),
         (name = "assumptions", description = "Inflation and ROI assumptions"),
-        (name = "projection", description = "Projection engine and quarterly withdrawal schedule"),
+        (name = "projection", description = "Tax-aware projection engine and quarterly withdrawal schedule"),
+        (name = "reports", description = "Downloadable tax and planning reports"),
         (name = "plans", description = "Save and load retirement plans"),
         (name = "health", description = "Service health"),
     )

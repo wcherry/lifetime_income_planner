@@ -224,11 +224,17 @@ export interface LifeEventRequest {
   notes?: string | null;
 }
 
+export type WithdrawalStrategy = "conventional" | "tax_optimized";
+
 export interface Assumptions {
   inflation_rate: number;
   investment_return_rate: number;
   healthcare_inflation_rate: number;
   social_security_cola_rate: number;
+  roth_conversion_ceiling: number;
+  roth_conversion_start_year: number | null;
+  roth_conversion_end_year: number | null;
+  withdrawal_strategy: WithdrawalStrategy;
   is_default: boolean;
   updated_at: string | null;
 }
@@ -238,6 +244,10 @@ export interface AssumptionsRequest {
   investment_return_rate: number;
   healthcare_inflation_rate: number;
   social_security_cola_rate: number;
+  roth_conversion_ceiling: number;
+  roth_conversion_start_year?: number | null;
+  roth_conversion_end_year?: number | null;
+  withdrawal_strategy: WithdrawalStrategy;
 }
 
 export interface ProjectionAssumptions {
@@ -245,6 +255,11 @@ export interface ProjectionAssumptions {
   investment_return_rate: number;
   healthcare_inflation_rate: number;
   social_security_cola_rate: number;
+  roth_conversion_ceiling: number;
+  roth_conversion_start_year: number | null;
+  roth_conversion_end_year: number | null;
+  /** Withdrawal sequencing strategy driving the drawdown order (feature 9). */
+  withdrawal_strategy: string;
   is_default: boolean;
 }
 
@@ -254,7 +269,37 @@ export interface ProjectionSummary {
   total_lifetime_income: number;
   total_lifetime_spending: number;
   total_lifetime_withdrawals: number;
+  total_lifetime_taxes: number;
+  total_lifetime_federal_taxes: number;
+  total_lifetime_state_taxes: number;
+  total_lifetime_roth_conversions: number;
   depletion_year: number | null;
+}
+
+export interface YearTax {
+  ordinary_income: number;
+  qualified_dividends: number;
+  capital_gains: number;
+  social_security_benefits: number;
+  taxable_social_security: number;
+  adjusted_gross_income: number;
+  standard_deduction: number;
+  taxable_income: number;
+  federal_ordinary_tax: number;
+  federal_capital_gains_tax: number;
+  federal_tax: number;
+  state_taxable_income: number;
+  state_standard_deduction: number;
+  state_tax: number;
+  /** State marginal rate as a fraction (e.g. 0.093). */
+  state_marginal_rate: number;
+  /** Property tax for the year. Reserved for a later milestone; currently 0. */
+  property_tax: number;
+  total_tax: number;
+  /** Total (federal + state) tax as a fraction of gross income (0–1). */
+  effective_rate: number;
+  /** Federal ordinary marginal rate as a fraction (e.g. 0.22). */
+  marginal_rate: number;
 }
 
 export interface LifeEventOccurrence {
@@ -280,7 +325,14 @@ export interface YearProjection {
   milestones: Milestone[];
   growth: number;
   withdrawals: number;
+  /** Required minimum distribution due this year across the household (RMD module); 0 before RMDs begin. */
+  rmd_amount: number;
   contributions: number;
+  roth_conversion: number;
+  taxes: number;
+  tax: YearTax;
+  /** Which category was drawn from first this year (feature 9): "taxable_first" or "tax_deferred_first". */
+  withdrawal_order: string;
   ending_balance: number;
   shortfall: number;
 }
@@ -298,8 +350,24 @@ export interface QuarterProjection {
   quarter: number;
   income: number;
   spending: number;
+  estimated_tax: number;
   total_withdrawal: number;
   withdrawals: QuarterWithdrawal[];
+}
+
+export interface EstimatedTaxPayment {
+  label: string;
+  period: string;
+  /** ISO due date, e.g. "2026-04-15". */
+  due_date: string;
+  amount: number;
+}
+
+export interface EstimatedTaxes {
+  tax_year: number;
+  total: number;
+  note: string;
+  payments: EstimatedTaxPayment[];
 }
 
 export interface Projection {
@@ -310,6 +378,7 @@ export interface Projection {
   summary: ProjectionSummary;
   annual: YearProjection[];
   quarterly: QuarterProjection[];
+  estimated_taxes: EstimatedTaxes;
 }
 
 export interface PlanContents {

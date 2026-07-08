@@ -80,6 +80,10 @@ pub async fn upsert_assumptions(
         healthcare_inflation_rate: payload.healthcare_inflation_rate,
         social_security_cola_rate: payload.social_security_cola_rate,
         updated_at: Utc::now().naive_utc(),
+        roth_conversion_ceiling: payload.roth_conversion_ceiling,
+        roth_conversion_start_year: payload.roth_conversion_start_year,
+        roth_conversion_end_year: payload.roth_conversion_end_year,
+        withdrawal_strategy: payload.withdrawal_strategy.as_str().to_string(),
     };
 
     let pool = pool.clone();
@@ -103,6 +107,12 @@ pub async fn upsert_assumptions(
                         assumptions::social_security_cola_rate
                             .eq(new_row.social_security_cola_rate),
                         assumptions::updated_at.eq(new_row.updated_at),
+                        assumptions::roth_conversion_ceiling.eq(new_row.roth_conversion_ceiling),
+                        assumptions::roth_conversion_start_year
+                            .eq(new_row.roth_conversion_start_year),
+                        assumptions::roth_conversion_end_year
+                            .eq(new_row.roth_conversion_end_year),
+                        assumptions::withdrawal_strategy.eq(new_row.withdrawal_strategy.clone()),
                     ))
                     .execute(&mut conn)?;
             }

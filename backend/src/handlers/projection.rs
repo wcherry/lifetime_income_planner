@@ -5,12 +5,16 @@ use diesel::prelude::*;
 use crate::auth::AuthUser;
 use crate::db::DbPool;
 use crate::error::{AppError, AppResult};
+use crate::models::tax::load_tax_tables;
 use crate::models::{
-    Account, Assumptions, IncomeSource, LifeEvent, Profile, SpendingItem, DEFAULT_HEALTHCARE_INFLATION_RATE,
-    DEFAULT_INFLATION_RATE, DEFAULT_INVESTMENT_RETURN_RATE, DEFAULT_SOCIAL_SECURITY_COLA_RATE,
+    Account, Assumptions, IncomeSource, LifeEvent, Profile, ProjectionResponse, SpendingItem,
+    DEFAULT_HEALTHCARE_INFLATION_RATE, DEFAULT_INFLATION_RATE, DEFAULT_INVESTMENT_RETURN_RATE,
+    DEFAULT_ROTH_CONVERSION_CEILING, DEFAULT_SOCIAL_SECURITY_COLA_RATE,
+    DEFAULT_WITHDRAWAL_STRATEGY,
 };
 use crate::projection::{run_projection, ProjectionInputs};
 use crate::schema::{accounts, assumptions, income_sources, life_events, profiles, spending_items};
+use crate::tax::TaxTables;
 
 /// All of a user's planning data loaded together for a projection.
 struct PlanningData {
@@ -20,29 +24,13 @@ struct PlanningData {
     spending: Vec<SpendingItem>,
     life_events: Vec<LifeEvent>,
     assumptions: Option<Assumptions>,
+    tax_tables: TaxTables,
 }
 
-/// Generate the retirement projection and near-term quarterly withdrawal
-/// schedule for the authenticated user (roadmap Phase 1, features 8 & 9).
-///
-/// Requires a saved profile (it defines the projection horizon). Assumptions
-/// fall back to system defaults when the user has not saved their own.
-#[utoipa::path(
-    get,
-    path = "/api/projection",
-    tag = "projection",
-    responses(
-        (status = 200, description = "The projection and quarterly withdrawal schedule", body = crate::models::ProjectionResponse),
-        (status = 400, description = "No profile has been created yet"),
-        (status = 401, description = "Not authenticated"),
-    ),
-    security(("bearer_auth" = []))
-)]
-#[get("/projection")]
-pub async fn get_projection(pool: web::Data<DbPool>, auth: AuthUser) -> AppResult<HttpResponse> {
+/// Load a user's planning data and run the projection engine. Shared by the
+/// JSON projection endpoint and the CSV tax-report export (Phase 2, feature 8).
+pub(crate) async fn build_projection(pool: &DbPool, user_id: String) -> AppResult<ProjectionResponse> {
     let pool = pool.clone();
-    let user_id = auth.user_id.clone();
-
     let data = web::block(move || -> AppResult<PlanningData> {
         let mut conn = pool.get()?;
         Ok(PlanningData {
@@ -72,6 +60,7 @@ pub async fn get_projection(pool: web::Data<DbPool>, auth: AuthUser) -> AppResul
                 .select(Assumptions::as_select())
                 .first(&mut conn)
                 .optional()?,
+            tax_tables: load_tax_tables(&mut conn)?,
         })
     })
     .await
@@ -86,21 +75,37 @@ pub async fn get_projection(pool: web::Data<DbPool>, auth: AuthUser) -> AppResul
     // Use saved assumptions, or fall back to the same defaults the assumptions
     // endpoint serves.
     let assumptions_are_default = data.assumptions.is_none();
-    let (inflation_rate, investment_return_rate, healthcare_inflation_rate, social_security_cola_rate) =
-        match &data.assumptions {
-            Some(a) => (
-                a.inflation_rate,
-                a.investment_return_rate,
-                a.healthcare_inflation_rate,
-                a.social_security_cola_rate,
-            ),
-            None => (
-                DEFAULT_INFLATION_RATE,
-                DEFAULT_INVESTMENT_RETURN_RATE,
-                DEFAULT_HEALTHCARE_INFLATION_RATE,
-                DEFAULT_SOCIAL_SECURITY_COLA_RATE,
-            ),
-        };
+    let (
+        inflation_rate,
+        investment_return_rate,
+        healthcare_inflation_rate,
+        social_security_cola_rate,
+        roth_conversion_ceiling,
+        roth_conversion_start_year,
+        roth_conversion_end_year,
+        withdrawal_strategy,
+    ) = match &data.assumptions {
+        Some(a) => (
+            a.inflation_rate,
+            a.investment_return_rate,
+            a.healthcare_inflation_rate,
+            a.social_security_cola_rate,
+            a.roth_conversion_ceiling,
+            a.roth_conversion_start_year,
+            a.roth_conversion_end_year,
+            a.withdrawal_strategy.clone(),
+        ),
+        None => (
+            DEFAULT_INFLATION_RATE,
+            DEFAULT_INVESTMENT_RETURN_RATE,
+            DEFAULT_HEALTHCARE_INFLATION_RATE,
+            DEFAULT_SOCIAL_SECURITY_COLA_RATE,
+            DEFAULT_ROTH_CONVERSION_CEILING,
+            None,
+            None,
+            DEFAULT_WITHDRAWAL_STRATEGY.to_string(),
+        ),
+    };
 
     let inputs = ProjectionInputs {
         current_year: Utc::now().year(),
@@ -114,8 +119,34 @@ pub async fn get_projection(pool: web::Data<DbPool>, auth: AuthUser) -> AppResul
         healthcare_inflation_rate,
         social_security_cola_rate,
         assumptions_are_default,
+        roth_conversion_ceiling,
+        roth_conversion_start_year,
+        roth_conversion_end_year,
+        withdrawal_strategy,
+        tax_tables: data.tax_tables,
     };
 
-    let projection = run_projection(&inputs);
+    Ok(run_projection(&inputs))
+}
+
+/// Generate the retirement projection and near-term quarterly withdrawal
+/// schedule for the authenticated user (roadmap Phase 1, features 8 & 9).
+///
+/// Requires a saved profile (it defines the projection horizon). Assumptions
+/// fall back to system defaults when the user has not saved their own.
+#[utoipa::path(
+    get,
+    path = "/api/projection",
+    tag = "projection",
+    responses(
+        (status = 200, description = "The projection and quarterly withdrawal schedule", body = crate::models::ProjectionResponse),
+        (status = 400, description = "No profile has been created yet"),
+        (status = 401, description = "Not authenticated"),
+    ),
+    security(("bearer_auth" = []))
+)]
+#[get("/projection")]
+pub async fn get_projection(pool: web::Data<DbPool>, auth: AuthUser) -> AppResult<HttpResponse> {
+    let projection = build_projection(&pool, auth.user_id.clone()).await?;
     Ok(HttpResponse::Ok().json(projection))
 }

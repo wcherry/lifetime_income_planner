@@ -31,6 +31,10 @@ diesel::table! {
         social_security_cola_rate -> Double,
         created_at -> Timestamp,
         updated_at -> Timestamp,
+        roth_conversion_ceiling -> Double,
+        roth_conversion_start_year -> Nullable<Integer>,
+        roth_conversion_end_year -> Nullable<Integer>,
+        withdrawal_strategy -> Text,
     }
 }
 
@@ -106,6 +110,50 @@ diesel::table! {
 }
 
 diesel::table! {
+    state_tax_brackets (id) {
+        id -> Text,
+        state -> Text,
+        filing_status -> Text,
+        floor_amount -> Double,
+        rate -> Double,
+    }
+}
+
+diesel::table! {
+    state_tax_params (id) {
+        id -> Text,
+        state -> Text,
+        filing_status -> Text,
+        standard_deduction -> Double,
+        taxes_social_security -> Integer,
+        taxes_capital_gains_as_ordinary -> Integer,
+    }
+}
+
+diesel::table! {
+    tax_brackets (id) {
+        id -> Text,
+        tax_year -> Integer,
+        bracket_type -> Text,
+        filing_status -> Text,
+        floor_amount -> Double,
+        rate -> Double,
+    }
+}
+
+diesel::table! {
+    tax_filing_params (id) {
+        id -> Text,
+        tax_year -> Integer,
+        filing_status -> Text,
+        standard_deduction -> Double,
+        additional_senior_deduction -> Double,
+        ss_base_threshold -> Double,
+        ss_second_threshold -> Double,
+    }
+}
+
+diesel::table! {
     spending_items (id) {
         id -> Text,
         user_id -> Text,
@@ -148,5 +196,9 @@ diesel::allow_tables_to_appear_in_same_query!(
     plans,
     profiles,
     spending_items,
+    state_tax_brackets,
+    state_tax_params,
+    tax_brackets,
+    tax_filing_params,
     users,
 );

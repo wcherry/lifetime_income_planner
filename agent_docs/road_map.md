@@ -782,14 +782,14 @@ Goal: Transition from planning to active retirement management.
 
 Milestones
 
-* Quarterly review workflow
-* Actual vs. planned tracking
-* Automatic plan recalculation
-* Cash flow reconciliation
-* Task lists and reminders
-* Report generation
-* Export to PDF/CSV
-* Annual planning wizard
+1. Quarterly review workflow
+2. Actual vs. planned tracking
+3. Automatic plan recalculation
+4. Cash flow reconciliation
+5. Task lists and reminders
+6. Report generation
+7. Export to PDF/CSV
+8. Annual planning wizard
 
 Deliverable: A living retirement plan that evolves as the user’s financial situation changes.
 
@@ -801,14 +801,14 @@ Goal: Reduce manual effort and provide personalized guidance.
 
 Milestones
 
-* Financial account aggregation (e.g., Plaid or direct institution integrations)
-* Automatic balance and transaction updates
-* Tax form imports
-* Social Security statement import
-* AI-powered explanations of recommendations
-* Personalized insights and anomaly detection
-* Collaboration features for spouses and financial advisors
-* Mobile companion app
+1. Financial account aggregation (e.g., Plaid or direct institution integrations)
+2. Automatic balance and transaction updates
+3. Tax form imports
+4. Social Security statement import
+5. AI-powered explanations of recommendations
+6. Personalized insights and anomaly detection
+7. Collaboration features for spouses and financial advisors
+8. Mobile companion app
 
 Deliverable: A highly automated retirement platform that continuously monitors, explains, and adapts the user’s retirement strategy.
 
@@ -818,15 +818,15 @@ Future Expansion Opportunities
 
 Once the core planner is mature, the platform could evolve into a comprehensive retirement management suite by adding:
 
-* Dynamic spending strategies (e.g., guardrails, Guyton-Klinger, variable percentage withdrawals)
-* Long-term care and assisted living planning
-* Estate planning and beneficiary modeling
-* Charitable giving and donor-advised fund optimization
-* Legacy and inheritance projections
-* Tax law versioning to model proposed legislation
-* International retirement support
-* Advisor edition with multi-client management
-* Household collaboration and shared planning
-* Open APIs for integration with financial institutions and tax preparation software
+1. Dynamic spending strategies (e.g., guardrails, Guyton-Klinger, variable percentage withdrawals)
+2. Long-term care and assisted living planning
+3. Estate planning and beneficiary modeling
+4. Charitable giving and donor-advised fund optimization
+5. Legacy and inheritance projections
+6. Tax law versioning to model proposed legislation
+7. International retirement support
+8. Advisor edition with multi-client management
+9. Household collaboration and shared planning
+10. Open APIs for integration with financial institutions and tax preparation software
 
 This roadmap creates a progression from a focused, high-value MVP to a sophisticated retirement decision platform. By emphasizing actionable quarterly withdrawal plans, continuous re-optimization, and scenario comparison, the application fills a gap left by traditional retirement calculators that stop at forecasting rather than guiding ongoing execution.

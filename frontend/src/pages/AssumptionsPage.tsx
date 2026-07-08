@@ -1,7 +1,7 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { api } from "../api/client";
-import type { AssumptionsRequest } from "../api/types";
-import { Alert, Button, Card, Field, TextInput } from "../components/ui";
+import type { AssumptionsRequest, WithdrawalStrategy } from "../api/types";
+import { Alert, Button, Card, Field, Select, TextInput } from "../components/ui";
 
 // Matches the backend defaults in models/assumptions.rs.
 const DEFAULTS: AssumptionsRequest = {
@@ -9,7 +9,22 @@ const DEFAULTS: AssumptionsRequest = {
   investment_return_rate: 6.0,
   healthcare_inflation_rate: 4.5,
   social_security_cola_rate: 2.0,
+  roth_conversion_ceiling: 0,
+  roth_conversion_start_year: null,
+  roth_conversion_end_year: null,
+  withdrawal_strategy: "conventional",
 };
+
+const WITHDRAWAL_STRATEGY_OPTIONS: { value: WithdrawalStrategy; label: string }[] = [
+  { value: "conventional", label: "Conventional (taxable → tax-deferred → tax-free)" },
+  { value: "tax_optimized", label: "Tax-optimized (minimize tax at the margin each year)" },
+];
+
+/** Parse an optional year input; blank -> null. */
+function parseYear(value: string): number | null {
+  const n = Number(value);
+  return value.trim() === "" || Number.isNaN(n) ? null : n;
+}
 
 export function AssumptionsPage() {
   const [form, setForm] = useState<AssumptionsRequest>(DEFAULTS);
@@ -30,6 +45,10 @@ export function AssumptionsPage() {
             investment_return_rate: a.investment_return_rate,
             healthcare_inflation_rate: a.healthcare_inflation_rate,
             social_security_cola_rate: a.social_security_cola_rate,
+            roth_conversion_ceiling: a.roth_conversion_ceiling,
+            roth_conversion_start_year: a.roth_conversion_start_year,
+            roth_conversion_end_year: a.roth_conversion_end_year,
+            withdrawal_strategy: a.withdrawal_strategy,
           });
           setUsingDefaults(a.is_default);
         }
@@ -65,6 +84,10 @@ export function AssumptionsPage() {
         investment_return_rate: Number(form.investment_return_rate),
         healthcare_inflation_rate: Number(form.healthcare_inflation_rate),
         social_security_cola_rate: Number(form.social_security_cola_rate),
+        roth_conversion_ceiling: Number(form.roth_conversion_ceiling),
+        roth_conversion_start_year: form.roth_conversion_start_year,
+        roth_conversion_end_year: form.roth_conversion_end_year,
+        withdrawal_strategy: form.withdrawal_strategy,
       };
       await api.saveAssumptions(payload);
       setSaved(true);
@@ -156,6 +179,90 @@ export function AssumptionsPage() {
               }
               required
             />
+          </Field>
+        </div>
+
+        <h3 className="assumptions-subhead">Roth conversion strategy</h3>
+        <p className="muted">
+          Optionally convert traditional (tax-deferred) savings to Roth each year up to a target
+          taxable income — filling low-income years before RMDs and Social Security push you into
+          higher brackets. Set the ceiling to $0 to turn conversions off. Converted dollars move
+          into your first Roth account; the tax is funded like any other cash need.
+        </p>
+
+        <div className="grid-2">
+          <Field
+            label="Convert up to taxable income ($)"
+            htmlFor="roth-ceiling"
+            hint="Fill each year's taxable income to this level. 0 disables conversions."
+          >
+            <TextInput
+              id="roth-ceiling"
+              type="number"
+              step="1000"
+              min="0"
+              value={form.roth_conversion_ceiling}
+              onChange={(e) => update("roth_conversion_ceiling", Number(e.target.value))}
+              required
+            />
+          </Field>
+        </div>
+
+        <div className="grid-2">
+          <Field
+            label="Start year (optional)"
+            htmlFor="roth-start"
+            hint="Leave blank to begin at the start of the plan."
+          >
+            <TextInput
+              id="roth-start"
+              type="number"
+              step="1"
+              placeholder="e.g. 2027"
+              value={form.roth_conversion_start_year ?? ""}
+              onChange={(e) => update("roth_conversion_start_year", parseYear(e.target.value))}
+            />
+          </Field>
+          <Field
+            label="End year (optional)"
+            htmlFor="roth-end"
+            hint="Leave blank to run through the end of the plan."
+          >
+            <TextInput
+              id="roth-end"
+              type="number"
+              step="1"
+              placeholder="e.g. 2034"
+              value={form.roth_conversion_end_year ?? ""}
+              onChange={(e) => update("roth_conversion_end_year", parseYear(e.target.value))}
+            />
+          </Field>
+        </div>
+
+        <h3 className="assumptions-subhead">Withdrawal sequencing</h3>
+        <p className="muted">
+          Which order to draw from your accounts each year. <strong>Conventional</strong> drains
+          taxable accounts fully before touching tax-deferred, then tax-free — the standard rule of
+          thumb. <strong>Tax-optimized</strong> also realizes the lowest-gain taxable lots first, and
+          in years where realizing a taxable gain would cost more than an equivalent ordinary
+          withdrawal, draws from tax-deferred accounts first instead.
+        </p>
+
+        <div className="grid-2">
+          <Field label="Strategy" htmlFor="withdrawal-strategy">
+            <Select
+              id="withdrawal-strategy"
+              value={form.withdrawal_strategy}
+              onChange={(e) =>
+                update("withdrawal_strategy", e.target.value as WithdrawalStrategy)
+              }
+            >
+              {WITHDRAWAL_STRATEGY_OPTIONS.map((o) => (
+                <option key={o.value} value={o.value}>
+                  {o.label}
+                </option>
+              ))}
+            </Select>
           </Field>
         </div>
 

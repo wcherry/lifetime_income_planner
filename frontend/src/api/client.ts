@@ -69,6 +69,40 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
   return (await res.json()) as T;
 }
 
+/**
+ * Download the multi-year tax-summary CSV (feature 8) and trigger a browser
+ * save. A bespoke fetch (rather than `request<T>`) since the response is a
+ * file, not JSON, and still needs the auth header a plain `<a href>` can't
+ * carry.
+ */
+async function downloadTaxSummaryCsv(): Promise<void> {
+  const headers: Record<string, string> = {};
+  const token = getToken();
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+
+  const res = await fetch("/api/reports/tax-summary.csv", { headers });
+  if (!res.ok) {
+    let message = `Failed to download tax report (${res.status})`;
+    try {
+      const data = await res.json();
+      if (data && typeof data.error === "string") message = data.error;
+    } catch {
+      // Non-JSON error body; keep the default message.
+    }
+    throw new ApiError(res.status, message);
+  }
+
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = "tax-summary.csv";
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+}
+
 export const api = {
   register: (email: string, password: string) =>
     request<AuthResponse>("POST", "/auth/register", { email, password }),
@@ -125,6 +159,8 @@ export const api = {
     request<Assumptions>("PUT", "/assumptions", payload),
 
   getProjection: () => request<Projection>("GET", "/projection"),
+
+  downloadTaxSummaryCsv,
 
   listPlans: () => request<Plan[]>("GET", "/plans"),
 

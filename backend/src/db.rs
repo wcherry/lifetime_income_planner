@@ -23,6 +23,13 @@ pub fn run_migrations(pool: &DbPool) {
         .expect("Failed to run database migrations");
 }
 
+/// Seed reference data the app depends on (currently the tax tables) if it is
+/// missing. Idempotent, so existing (possibly admin-edited) data is preserved.
+pub fn seed_reference_data(pool: &DbPool) {
+    let mut conn = pool.get().expect("Failed to get connection for seeding");
+    crate::models::seed_tax_tables_if_empty(&mut conn).expect("Failed to seed tax tables");
+}
+
 #[derive(Debug)]
 struct ForeignKeysOn;
 

@@ -7,6 +7,7 @@ mod models;
 mod openapi;
 mod projection;
 mod schema;
+mod tax;
 
 use actix_cors::Cors;
 use actix_web::{web, App, HttpServer};
@@ -24,6 +25,7 @@ async fn main() -> std::io::Result<()> {
     let config = Config::from_env();
     let pool = db::build_pool(&config.database_url);
     db::run_migrations(&pool);
+    db::seed_reference_data(&pool);
 
     let bind_host = config.host.clone();
     let bind_port = config.port;
@@ -73,6 +75,7 @@ async fn main() -> std::io::Result<()> {
                     .service(handlers::assumptions::get_assumptions)
                     .service(handlers::assumptions::upsert_assumptions)
                     .service(handlers::projection::get_projection)
+                    .service(handlers::reports::get_tax_summary_csv)
                     .service(handlers::plan::list_plans)
                     .service(handlers::plan::save_plan)
                     .service(handlers::plan::rename_plan)

@@ -12,6 +12,11 @@ export function formatPercent(value: number): string {
   return `${value.toFixed(1)}%`;
 }
 
+/** Format a fraction (0–1), e.g. a tax rate, as a percentage: 0.22 -> "22%". */
+export function formatRate(fraction: number): string {
+  return `${Math.round(fraction * 1000) / 10}%`;
+}
+
 /** Currency with an explicit +/− sign, for signed cash flows. */
 export function formatSignedCurrency(value: number): string {
   const abs = formatCurrency(Math.abs(value));
