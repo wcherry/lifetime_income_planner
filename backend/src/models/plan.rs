@@ -78,6 +78,10 @@ pub struct AssumptionsSnapshot {
     // before the feature existed.
     #[serde(default)]
     pub aca_benchmark_annual_premium: f64,
+    // Medicare Part B premium (Phase 3, feature 3). Defaulted for plans saved
+    // before the feature existed.
+    #[serde(default)]
+    pub medicare_part_b_annual_premium: f64,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -214,6 +218,7 @@ impl From<&Assumptions> for AssumptionsSnapshot {
             roth_conversion_end_year: a.roth_conversion_end_year,
             withdrawal_strategy: a.withdrawal_strategy.clone(),
             aca_benchmark_annual_premium: a.aca_benchmark_annual_premium,
+            medicare_part_b_annual_premium: a.medicare_part_b_annual_premium,
         }
     }
 }
@@ -326,6 +331,7 @@ impl AssumptionsSnapshot {
             roth_conversion_end_year: self.roth_conversion_end_year,
             withdrawal_strategy: self.withdrawal_strategy.clone(),
             aca_benchmark_annual_premium: self.aca_benchmark_annual_premium,
+            medicare_part_b_annual_premium: self.medicare_part_b_annual_premium,
         }
     }
 }

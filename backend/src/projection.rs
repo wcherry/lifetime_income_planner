@@ -49,6 +49,11 @@ pub struct ProjectionInputs<'a> {
     /// ACA benchmark (SLCSP) annual premium (Phase 3, feature 1). 0 disables ACA
     /// subsidy modeling. Grows with the healthcare inflation rate over the plan.
     pub aca_benchmark_annual_premium: f64,
+    /// Medicare Part B annual premium per enrolled household member (Phase 3,
+    /// feature 3), as of `current_year`. 0 disables Medicare cost modeling.
+    /// Applied automatically once each person turns 65 and grows with the
+    /// healthcare inflation rate over the plan.
+    pub medicare_part_b_annual_premium: f64,
     /// Reference tax parameters (brackets, deductions, state rates), loaded from
     /// the database and read by the tax engine.
     pub tax_tables: TaxTables,
@@ -281,6 +286,45 @@ fn compute_household_rmd(
     total
 }
 
+/// Household Medicare Part B premiums due for the year (Phase 3, feature 3):
+/// the standard annual premium, inflation-indexed from `current_year` by the
+/// healthcare inflation rate, charged once per household member who has
+/// reached 65 this year. `spouse_birth_year` is the spouse's birth year, if
+/// any. This models the base premium only — the IRMAA income-based surcharge
+/// is a later phase.
+fn compute_medicare_part_b_premiums(
+    annual_premium: f64,
+    primary_birth_year: i32,
+    year: i32,
+    current_year: i32,
+    healthcare_inflation_rate: f64,
+    spouse_birth_year: Option<i32>,
+) -> f64 {
+    if annual_premium <= 0.0 {
+        return 0.0;
+    }
+    let per_person =
+        annual_premium * growth_factor(healthcare_inflation_rate, year - current_year);
+    let mut total = 0.0;
+    if year - primary_birth_year >= 65 {
+        total += per_person;
+    }
+    if let Some(sby) = spouse_birth_year {
+        if year - sby >= 65 {
+            total += per_person;
+        }
+    }
+    total
+}
+
+/// Modified Adjusted Gross Income (Phase 3, feature 2): AGI plus the untaxed
+/// portion of Social Security benefits. Computed the same way regardless of
+/// whether ACA eligibility applies, so it can be tracked and forecast across
+/// every year of the plan (and, in a later phase, drive Medicare IRMAA).
+fn compute_magi(tax: &TaxResult, ss_benefits: f64) -> f64 {
+    tax.adjusted_gross_income + (ss_benefits - tax.taxable_social_security).max(0.0)
+}
+
 /// Age/regulatory milestones for one person. `who` is a lowercase subject
 /// phrase ("you" / "your spouse") woven into each tooltip.
 fn person_milestones(dob: NaiveDate, who: &str) -> Vec<(i32, Milestone)> {
@@ -305,6 +349,24 @@ fn person_milestones(dob: NaiveDate, who: &str) -> Vec<(i32, Milestone)> {
             age: 62,
         },
     ));
+    // Medicare enrollment window (Phase 3, feature 3): the Initial Enrollment
+    // Period runs from 3 months before the 65th birthday month through 3
+    // months after it (7 months total). Enrolling after it closes risks a
+    // lifetime Part B late-enrollment penalty (absent other creditable
+    // coverage), so both edges of the window are surfaced alongside the
+    // eligibility date itself.
+    if let Some(y) = milestone_year(dob, 64 * 12 + 9) {
+        out.push((
+            y,
+            Milestone {
+                label: "Medicare enrollment window opens".into(),
+                detail: format!(
+                    "The Medicare Initial Enrollment Period begins for {who} — 3 months before turning 65."
+                ),
+                age: 64,
+            },
+        ));
+    }
     out.push((
         by + 65,
         Milestone {
@@ -313,6 +375,19 @@ fn person_milestones(dob: NaiveDate, who: &str) -> Vec<(i32, Milestone)> {
             age: 65,
         },
     ));
+    if let Some(y) = milestone_year(dob, 65 * 12 + 3) {
+        out.push((
+            y,
+            Milestone {
+                label: "Medicare enrollment window closes".into(),
+                detail: format!(
+                    "The Medicare Initial Enrollment Period ends for {who} — enrolling after this \
+                     without other creditable coverage risks a lifetime Part B late-enrollment penalty."
+                ),
+                age: 65,
+            },
+        ));
+    }
     let fra_m = full_retirement_age_months(by);
     if let Some(y) = milestone_year(dob, fra_m) {
         let (yrs, rem) = (fra_m / 12, fra_m % 12);
@@ -463,6 +538,7 @@ pub fn run_projection(inp: &ProjectionInputs) -> ProjectionResponse {
     let mut total_state_taxes = 0.0;
     let mut total_roth_conversions = 0.0;
     let mut total_aca_subsidies = 0.0;
+    let mut total_medicare_premiums = 0.0;
     let mut depletion_year: Option<i32> = None;
 
     for year in start_year..=end_year {
@@ -556,8 +632,20 @@ pub fn run_projection(inp: &ProjectionInputs) -> ProjectionResponse {
             }
         }
 
-        // Cash available before tax and account draws (income + events − spending).
-        let base_cash = income + life_events_net - spending;
+        // Medicare Part B premiums (Phase 3, feature 3): a real, near-universal
+        // cash need from age 65, modeled the same way as spending.
+        let medicare_premiums = compute_medicare_part_b_premiums(
+            inp.medicare_part_b_annual_premium,
+            birth_year,
+            year,
+            inp.current_year,
+            inp.healthcare_inflation_rate,
+            spouse_birth_year,
+        );
+
+        // Cash available before tax and account draws (income + events −
+        // spending − Medicare premiums).
+        let base_cash = income + life_events_net - spending - medicare_premiums;
         let seniors = seniors_65_plus(inp.profile, filing_status, year);
 
         // ---- Roth conversion (feature 6) ----------------------------------
@@ -675,11 +763,11 @@ pub fn run_projection(inp: &ProjectionInputs) -> ProjectionResponse {
             };
             tax = compute_taxes(&input, &inp.tax_tables);
 
-            // ACA MAGI adds back the untaxed portion of Social Security to AGI.
+            // MAGI (Phase 3, feature 2) adds back the untaxed portion of Social
+            // Security to AGI; the ACA subsidy (when in its window) is based on it.
             let mut new_subsidy = 0.0;
             if aca_window {
-                let magi =
-                    tax.adjusted_gross_income + (ss_benefits - tax.taxable_social_security).max(0.0);
+                let magi = compute_magi(&tax, ss_benefits);
                 aca = compute_subsidy(
                     &AcaInput {
                         year,
@@ -762,9 +850,14 @@ pub fn run_projection(inp: &ProjectionInputs) -> ProjectionResponse {
         total_state_taxes += tax.state_tax;
         total_roth_conversions += roth_conversion;
         total_aca_subsidies += subsidy;
+        total_medicare_premiums += medicare_premiums;
         if year == start_year {
             first_year_tax = tax.total_tax;
         }
+
+        // MAGI (Phase 3, feature 2), tracked every year regardless of ACA
+        // eligibility so it can be forecast across the whole plan.
+        let magi = compute_magi(&tax, ss_benefits);
 
         annual.push(YearProjection {
             year,
@@ -779,6 +872,7 @@ pub fn run_projection(inp: &ProjectionInputs) -> ProjectionResponse {
             growth: round2(growth),
             withdrawals: round2(withdrawals),
             rmd_amount: round2(rmd_amount),
+            medicare_premiums: round2(medicare_premiums),
             contributions: round2(contributions),
             roth_conversion: round2(roth_conversion),
             taxes: round2(tax.total_tax),
@@ -789,6 +883,7 @@ pub fn run_projection(inp: &ProjectionInputs) -> ProjectionResponse {
                 social_security_benefits: round2(ss_benefits),
                 taxable_social_security: round2(tax.taxable_social_security),
                 adjusted_gross_income: round2(tax.adjusted_gross_income),
+                magi: round2(magi),
                 standard_deduction: round2(tax.standard_deduction),
                 taxable_income: round2(tax.taxable_income),
                 federal_ordinary_tax: round2(tax.federal_ordinary_tax),
@@ -844,6 +939,7 @@ pub fn run_projection(inp: &ProjectionInputs) -> ProjectionResponse {
             roth_conversion_end_year: inp.roth_conversion_end_year,
             withdrawal_strategy: inp.withdrawal_strategy.clone(),
             aca_benchmark_annual_premium: inp.aca_benchmark_annual_premium,
+            medicare_part_b_annual_premium: inp.medicare_part_b_annual_premium,
             is_default: inp.assumptions_are_default,
         },
         summary: ProjectionSummary {
@@ -857,6 +953,7 @@ pub fn run_projection(inp: &ProjectionInputs) -> ProjectionResponse {
             total_lifetime_state_taxes: round2(total_state_taxes),
             total_lifetime_roth_conversions: round2(total_roth_conversions),
             total_lifetime_aca_subsidies: round2(total_aca_subsidies),
+            total_lifetime_medicare_premiums: round2(total_medicare_premiums),
             depletion_year,
         },
         annual,
@@ -1382,6 +1479,7 @@ mod tests {
             roth_conversion_end_year: None,
             withdrawal_strategy: "conventional".to_string(),
             aca_benchmark_annual_premium: 0.0,
+            medicare_part_b_annual_premium: 0.0,
             tax_tables: TaxTables::default_2025(),
             aca_tables: crate::aca::AcaTables::default_2025(),
         }
@@ -2078,5 +2176,112 @@ mod tests {
         // Both still receive some subsidy (both under the benchmark).
         assert!(base.annual[0].aca.subsidy > 0.0);
         assert!(conv.annual[0].aca.subsidy > 0.0);
+    }
+
+    // ---- Phase 3, feature 2: MAGI tracking ----------------------------------
+
+    #[test]
+    fn magi_is_tracked_every_year_even_without_aca() {
+        // No ACA benchmark set, but MAGI should still be computed every year
+        // (AGI plus the untaxed portion of Social Security) so it can be
+        // forecast independently of ACA eligibility.
+        let p = profile(1960, 2026 - 1960);
+        let inc = [
+            income("pension", 40_000.0, "annual", date(2020, 1, 1), false, 0.0),
+            income_typed("ss", "social_security", 20_000.0, date(2020, 1, 1)),
+        ];
+        let out = run_projection(&base_inputs(&p, &[], &inc, &[], &[]));
+        let y = &out.annual[0];
+        assert_eq!(y.aca.subsidy, 0.0); // ACA modeling is off
+        assert!(y.tax.magi > y.tax.adjusted_gross_income);
+        let expected = y.tax.adjusted_gross_income
+            + (y.tax.social_security_benefits - y.tax.taxable_social_security).max(0.0);
+        assert!((y.tax.magi - expected).abs() < 1.0);
+    }
+
+    #[test]
+    fn magi_matches_the_aca_magi_when_aca_is_active() {
+        // When the ACA subsidy is being computed, the general-purpose MAGI
+        // tracked on `tax` should agree with the MAGI the subsidy itself used.
+        let p = profile(1965, 2026 - 1965);
+        let inc = [income("pension", 30_000.0, "annual", date(2020, 1, 1), false, 0.0)];
+        let mut inputs = base_inputs(&p, &[], &inc, &[], &[]);
+        inputs.aca_benchmark_annual_premium = 12_000.0;
+        let out = run_projection(&inputs);
+        let y = &out.annual[0];
+        assert!(y.aca.eligible);
+        assert!((y.tax.magi - y.aca.magi).abs() < 1.0);
+    }
+
+    // ---- Phase 3, feature 3: Medicare Part B premium & enrollment ----------
+
+    #[test]
+    fn medicare_premium_is_zero_before_65_and_charged_from_65() {
+        // life_expectancy is added directly to birth_year for the horizon, so
+        // 65 extends the projection through 2027 (65 in 2027).
+        let p = profile(1962, 65); // 64 in 2026, 65 in 2027
+        let mut inputs = base_inputs(&p, &[], &[], &[], &[]);
+        inputs.medicare_part_b_annual_premium = 2_220.0;
+        let out = run_projection(&inputs);
+        let y2026 = out.annual.iter().find(|r| r.year == 2026).unwrap();
+        let y2027 = out.annual.iter().find(|r| r.year == 2027).unwrap();
+        assert_eq!(y2026.medicare_premiums, 0.0);
+        assert_eq!(y2027.medicare_premiums, 2_220.0);
+        assert_eq!(out.summary.total_lifetime_medicare_premiums, 2_220.0);
+    }
+
+    #[test]
+    fn medicare_premium_disabled_when_zero() {
+        let p = profile(1955, 2026 - 1955); // already past 65
+        let out = run_projection(&base_inputs(&p, &[], &[], &[], &[]));
+        assert_eq!(out.annual[0].medicare_premiums, 0.0);
+        assert_eq!(out.summary.total_lifetime_medicare_premiums, 0.0);
+    }
+
+    #[test]
+    fn medicare_premium_charged_per_spouse_independently() {
+        // Primary is 65 in 2026 (one premium); spouse doesn't turn 65 until
+        // 2030, when the household starts paying two premiums.
+        let mut p = profile(1961, 2050 - 1961);
+        p.spouse_date_of_birth = Some(date(1965, 1, 1));
+        p.spouse_life_expectancy = Some(90);
+        let mut inputs = base_inputs(&p, &[], &[], &[], &[]);
+        inputs.medicare_part_b_annual_premium = 2_000.0;
+        let out = run_projection(&inputs);
+        let y2026 = out.annual.iter().find(|r| r.year == 2026).unwrap();
+        let y2030 = out.annual.iter().find(|r| r.year == 2030).unwrap();
+        assert_eq!(y2026.medicare_premiums, 2_000.0);
+        assert_eq!(y2030.medicare_premiums, 4_000.0);
+    }
+
+    #[test]
+    fn medicare_premium_grows_with_healthcare_inflation() {
+        let p = profile(1961, 2027 - 1961); // 65 in 2026
+        let mut inputs = base_inputs(&p, &[], &[], &[], &[]);
+        inputs.medicare_part_b_annual_premium = 2_000.0;
+        inputs.healthcare_inflation_rate = 10.0;
+        let out = run_projection(&inputs);
+        let y2027 = out.annual.iter().find(|r| r.year == 2027).unwrap();
+        // One year of 10% healthcare inflation on the age-65 premium.
+        assert!((y2027.medicare_premiums - 2_200.0).abs() < 0.5);
+    }
+
+    #[test]
+    fn medicare_enrollment_window_milestones_bracket_the_65th_birthday() {
+        // Born June 1965: turns 65 in June 2030. The Initial Enrollment
+        // Period opens 3 months before (March 2030, same year) and closes 3
+        // months after (September 2030, same year here).
+        let p = profile(1965, 2050 - 1965);
+        let out = run_projection(&base_inputs(&p, &[], &[], &[], &[]));
+        let labels = |year: i32| -> Vec<String> {
+            out.annual
+                .iter()
+                .find(|r| r.year == year)
+                .map(|r| r.milestones.iter().map(|m| m.label.clone()).collect())
+                .unwrap_or_default()
+        };
+        assert!(labels(2030).contains(&"Medicare enrollment window opens".to_string()));
+        assert!(labels(2030).contains(&"Medicare eligibility".to_string()));
+        assert!(labels(2030).contains(&"Medicare enrollment window closes".to_string()));
     }
 }

@@ -28,6 +28,7 @@ const baseSummary: ProjectionSummary = {
   total_lifetime_state_taxes: 0,
   total_lifetime_roth_conversions: 0,
   total_lifetime_aca_subsidies: 0,
+  total_lifetime_medicare_premiums: 0,
   depletion_year: null,
 };
 
@@ -49,6 +50,7 @@ const emptyTax: YearTax = {
   social_security_benefits: 0,
   taxable_social_security: 0,
   adjusted_gross_income: 0,
+  magi: 0,
   standard_deduction: 0,
   taxable_income: 0,
   federal_ordinary_tax: 0,
@@ -78,6 +80,7 @@ function year(overrides: Partial<YearProjection>): YearProjection {
     growth: 0,
     withdrawals: 0,
     rmd_amount: 0,
+    medicare_premiums: 0,
     contributions: 0,
     roth_conversion: 0,
     taxes: 0,
@@ -109,6 +112,7 @@ function projectionWith(
       roth_conversion_end_year: null,
       withdrawal_strategy: "conventional",
       aca_benchmark_annual_premium: 0,
+      medicare_part_b_annual_premium: 0,
       is_default: true,
     },
     summary,

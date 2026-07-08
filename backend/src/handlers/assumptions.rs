@@ -85,6 +85,7 @@ pub async fn upsert_assumptions(
         roth_conversion_end_year: payload.roth_conversion_end_year,
         withdrawal_strategy: payload.withdrawal_strategy.as_str().to_string(),
         aca_benchmark_annual_premium: payload.aca_benchmark_annual_premium,
+        medicare_part_b_annual_premium: payload.medicare_part_b_annual_premium,
     };
 
     let pool = pool.clone();
@@ -116,6 +117,8 @@ pub async fn upsert_assumptions(
                         assumptions::withdrawal_strategy.eq(new_row.withdrawal_strategy.clone()),
                         assumptions::aca_benchmark_annual_premium
                             .eq(new_row.aca_benchmark_annual_premium),
+                        assumptions::medicare_part_b_annual_premium
+                            .eq(new_row.medicare_part_b_annual_premium),
                     ))
                     .execute(&mut conn)?;
             }

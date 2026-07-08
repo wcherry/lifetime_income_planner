@@ -6,10 +6,12 @@ the full product vision and phased roadmap.
 
 ## Status
 
-**Phase 3 (Healthcare & Regulatory Intelligence) in progress — features 1 and 5
-complete.** A pure, unit-tested ACA engine (`backend/src/aca.rs`) computes the
-Affordable Care Act premium tax credit for each pre-Medicare projection year,
-and the projection engine now enforces required minimum distributions:
+**Phase 3 (Healthcare & Regulatory Intelligence) in progress — features 1, 2, 3,
+and 5 complete.** A pure, unit-tested ACA engine (`backend/src/aca.rs`) computes
+the Affordable Care Act premium tax credit for each pre-Medicare projection
+year, MAGI is tracked as a first-class figure every year, Medicare Part B
+premiums and enrollment milestones are modeled automatically from age 65, and
+the projection engine enforces required minimum distributions:
 
 1. **ACA subsidy calculations** — the household's Modified AGI is measured
    against the Federal Poverty Line for its size; where it lands on the FPL
@@ -33,6 +35,30 @@ startup from the app's built-in 2025 figures and read per request — the same
 admin-maintainable pattern as the tax tables. FPL guidelines are inflation-
 indexed across the horizon.
 
+2. **MAGI tracking and forecasting** — Modified Adjusted Gross Income (AGI
+   plus the untaxed portion of Social Security) is now computed every
+   projection year regardless of ACA eligibility, not just while the ACA
+   subsidy calculation needs it. This lets MAGI-driven thresholds be forecast
+   across the whole plan, and gives the upcoming Medicare IRMAA surcharge
+   (feature 4) a ready-made input. The **Tax breakdown** card shows the
+   current year's MAGI, and the **Tax report** table/CSV export carries a MAGI
+   column for every projected year.
+
+3. **Medicare enrollment events** — the Initial Enrollment Period (the 7-month
+   window from 3 months before the 65th birthday month through 3 months
+   after) now brackets the existing Medicare-eligibility milestone with two
+   new markers, including a note that enrolling after the window closes risks
+   a lifetime Part B late-enrollment penalty. Separately, the standard
+   Medicare Part B premium is now modeled as an automatic annual cost per
+   household member once they turn 65 — inflation-indexed by the healthcare
+   inflation rate, the mirror image of the pre-65 ACA modeling. It defaults
+   to *on* (the 2025 standard rate, $185.00/mo) since nearly every retiree
+   pays at least this once enrolled; set it to $0 on the **Assumptions** page
+   to exclude it (e.g. a spouse's employer plan covers it instead). The Plan
+   page shows a lifetime Part B tile and a per-year column once it applies.
+   This is the base premium only — the income-based IRMAA surcharge on top of
+   it is a later phase (feature 4).
+
 5. **Required Minimum Distribution (RMD) calculations** — each owner's annual
    RMD is computed from their prior year-end tax-deferred balance divided by
    the IRS Uniform Lifetime Table divisor for their age, once they've reached
@@ -43,9 +69,8 @@ indexed across the horizon.
    flags any year where the RMD exceeds that year's spending need with a
    warning icon in the year-by-year table.
 
-Still to come in Phase 3: MAGI tracking/forecasting, Medicare enrollment events,
-IRMAA forecasting, Roth conversion timing around IRMAA/RMDs, and regulatory
-alerts (features 2–4, 6–7).
+Still to come in Phase 3: Medicare IRMAA forecasting, Roth conversion timing
+around IRMAA/RMDs, and regulatory alerts (features 4, 6–7).
 
 **Phase 2 (Tax Optimization) complete — all 9 features.** The
 projection engine is now tax-aware. A pure, unit-tested tax engine

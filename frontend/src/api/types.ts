@@ -236,6 +236,7 @@ export interface Assumptions {
   roth_conversion_end_year: number | null;
   aca_benchmark_annual_premium: number;
   withdrawal_strategy: WithdrawalStrategy;
+  medicare_part_b_annual_premium: number;
   is_default: boolean;
   updated_at: string | null;
 }
@@ -250,6 +251,7 @@ export interface AssumptionsRequest {
   roth_conversion_end_year?: number | null;
   aca_benchmark_annual_premium: number;
   withdrawal_strategy: WithdrawalStrategy;
+  medicare_part_b_annual_premium: number;
 }
 
 export interface ProjectionAssumptions {
@@ -263,6 +265,7 @@ export interface ProjectionAssumptions {
   /** Withdrawal sequencing strategy driving the drawdown order (feature 9). */
   withdrawal_strategy: string;
   aca_benchmark_annual_premium: number;
+  medicare_part_b_annual_premium: number;
   is_default: boolean;
 }
 
@@ -277,6 +280,7 @@ export interface ProjectionSummary {
   total_lifetime_state_taxes: number;
   total_lifetime_roth_conversions: number;
   total_lifetime_aca_subsidies: number;
+  total_lifetime_medicare_premiums: number;
   depletion_year: number | null;
 }
 
@@ -300,6 +304,8 @@ export interface YearTax {
   social_security_benefits: number;
   taxable_social_security: number;
   adjusted_gross_income: number;
+  /** Modified Adjusted Gross Income (MAGI): AGI plus untaxed Social Security, tracked every year. */
+  magi: number;
   standard_deduction: number;
   taxable_income: number;
   federal_ordinary_tax: number;
@@ -344,6 +350,8 @@ export interface YearProjection {
   withdrawals: number;
   /** Required minimum distribution due this year across the household (RMD module); 0 before RMDs begin. */
   rmd_amount: number;
+  /** Medicare Part B premiums due this year, per enrolled household member (65+); 0 if disabled. */
+  medicare_premiums: number;
   contributions: number;
   roth_conversion: number;
   taxes: number;

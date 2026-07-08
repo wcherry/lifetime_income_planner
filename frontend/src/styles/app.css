@@ -637,6 +637,11 @@ form {
   max-width: 32rem;
 }
 
+/* MAGI callout below the federal/state taxable-income buildup. */
+.tax-magi-note {
+  margin: 1rem 0 0;
+}
+
 .tax-hint {
   font-size: 0.78rem;
 }

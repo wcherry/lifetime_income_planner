@@ -18,6 +18,11 @@ pub const DEFAULT_ROTH_CONVERSION_CEILING: f64 = 0.0;
 pub const DEFAULT_WITHDRAWAL_STRATEGY: &str = "conventional";
 /// ACA subsidy modeling is off by default (a benchmark premium of 0 disables it).
 pub const DEFAULT_ACA_BENCHMARK_ANNUAL_PREMIUM: f64 = 0.0;
+/// Medicare Part B modeling (Phase 3, feature 3) defaults to *on*, using the
+/// 2025 standard monthly premium ($185.00 x 12) — nearly every retiree pays at
+/// least this once enrolled, so it is a realistic default rather than an
+/// opt-in like the ACA benchmark. 0 disables it.
+pub const DEFAULT_MEDICARE_PART_B_ANNUAL_PREMIUM: f64 = 2_220.0;
 
 /// Withdrawal sequencing strategy (roadmap Phase 2, feature 9): which order the
 /// engine draws from accounts to cover a year's cash need.
@@ -77,6 +82,9 @@ pub struct Assumptions {
     pub aca_benchmark_annual_premium: f64,
     /// Withdrawal sequencing strategy (feature 9), stored as its `as_str()` form.
     pub withdrawal_strategy: String,
+    /// Medicare Part B modeling (Phase 3, feature 3): the annual standard Part
+    /// B premium per Medicare-enrolled household member. 0 disables it.
+    pub medicare_part_b_annual_premium: f64,
 }
 
 /// Insertable row used when assumptions are first created.
@@ -95,6 +103,7 @@ pub struct NewAssumptions {
     pub roth_conversion_end_year: Option<i32>,
     pub aca_benchmark_annual_premium: f64,
     pub withdrawal_strategy: String,
+    pub medicare_part_b_annual_premium: f64,
 }
 
 /// Request body for creating or replacing the planning assumptions.
@@ -143,6 +152,18 @@ pub struct AssumptionsRequest {
     /// Withdrawal sequencing strategy (feature 9). Defaults to conventional.
     #[serde(default)]
     pub withdrawal_strategy: WithdrawalStrategy,
+
+    /// Medicare Part B annual premium (Phase 3, feature 3): the standard
+    /// premium per Medicare-enrolled household member, applied automatically
+    /// from age 65. 0 disables it.
+    #[validate(range(min = 0.0, max = 50_000.0, message = "must be between 0 and 50,000"))]
+    #[serde(default = "default_medicare_part_b_annual_premium")]
+    #[schema(example = 2_220.0)]
+    pub medicare_part_b_annual_premium: f64,
+}
+
+fn default_medicare_part_b_annual_premium() -> f64 {
+    DEFAULT_MEDICARE_PART_B_ANNUAL_PREMIUM
 }
 
 /// API view of the planning assumptions.
@@ -157,6 +178,7 @@ pub struct AssumptionsResponse {
     pub roth_conversion_end_year: Option<i32>,
     pub aca_benchmark_annual_premium: f64,
     pub withdrawal_strategy: WithdrawalStrategy,
+    pub medicare_part_b_annual_premium: f64,
     /// True when no assumptions have been saved yet and defaults are being returned.
     pub is_default: bool,
     #[schema(value_type = Option<String>, format = DateTime)]
@@ -176,6 +198,7 @@ impl AssumptionsResponse {
             roth_conversion_end_year: None,
             aca_benchmark_annual_premium: DEFAULT_ACA_BENCHMARK_ANNUAL_PREMIUM,
             withdrawal_strategy: WithdrawalStrategy::Conventional,
+            medicare_part_b_annual_premium: DEFAULT_MEDICARE_PART_B_ANNUAL_PREMIUM,
             is_default: true,
             updated_at: None,
         }
@@ -194,6 +217,7 @@ impl From<Assumptions> for AssumptionsResponse {
             roth_conversion_end_year: a.roth_conversion_end_year,
             aca_benchmark_annual_premium: a.aca_benchmark_annual_premium,
             withdrawal_strategy: WithdrawalStrategy::from_str(&a.withdrawal_strategy),
+            medicare_part_b_annual_premium: a.medicare_part_b_annual_premium,
             is_default: false,
             updated_at: Some(a.updated_at),
         }

@@ -14,6 +14,7 @@ const DEFAULTS: AssumptionsRequest = {
   roth_conversion_end_year: null,
   withdrawal_strategy: "conventional",
   aca_benchmark_annual_premium: 0,
+  medicare_part_b_annual_premium: 2_220,
 };
 
 const WITHDRAWAL_STRATEGY_OPTIONS: { value: WithdrawalStrategy; label: string }[] = [
@@ -51,6 +52,7 @@ export function AssumptionsPage() {
             roth_conversion_end_year: a.roth_conversion_end_year,
             withdrawal_strategy: a.withdrawal_strategy,
             aca_benchmark_annual_premium: a.aca_benchmark_annual_premium,
+            medicare_part_b_annual_premium: a.medicare_part_b_annual_premium,
           });
           setUsingDefaults(a.is_default);
         }
@@ -91,6 +93,7 @@ export function AssumptionsPage() {
         roth_conversion_end_year: form.roth_conversion_end_year,
         withdrawal_strategy: form.withdrawal_strategy,
         aca_benchmark_annual_premium: Number(form.aca_benchmark_annual_premium),
+        medicare_part_b_annual_premium: Number(form.medicare_part_b_annual_premium),
       };
       await api.saveAssumptions(payload);
       setSaved(true);
@@ -292,6 +295,34 @@ export function AssumptionsPage() {
               min="0"
               value={form.aca_benchmark_annual_premium}
               onChange={(e) => update("aca_benchmark_annual_premium", Number(e.target.value))}
+              required
+            />
+          </Field>
+        </div>
+
+        <h3 className="assumptions-subhead">Medicare Part B</h3>
+        <p className="muted">
+          From age 65, Medicare Part B has a standard monthly premium — higher earners pay more via
+          an income-based IRMAA surcharge, modeled in a later phase. The planner adds the standard
+          premium to your annual costs automatically once each person in the household turns 65. Set
+          it to $0 if you expect other coverage (e.g. a spouse's employer plan) to pay it instead.
+        </p>
+
+        <div className="grid-2">
+          <Field
+            label="Part B premium ($/yr)"
+            htmlFor="medicare-part-b"
+            hint="2025 standard premium is $185.00/mo ($2,220/yr). Charged per person, per year, from age 65."
+          >
+            <TextInput
+              id="medicare-part-b"
+              type="number"
+              step="100"
+              min="0"
+              value={form.medicare_part_b_annual_premium}
+              onChange={(e) =>
+                update("medicare_part_b_annual_premium", Number(e.target.value))
+              }
               required
             />
           </Field>

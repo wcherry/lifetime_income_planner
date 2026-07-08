@@ -53,6 +53,7 @@ diesel::table! {
         roth_conversion_end_year -> Nullable<Integer>,
         aca_benchmark_annual_premium -> Double,
         withdrawal_strategy -> Text,
+        medicare_part_b_annual_premium -> Double,
     }
 }
 

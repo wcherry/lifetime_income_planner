@@ -45,15 +45,15 @@ fn render_tax_summary_csv(projection: &ProjectionResponse) -> String {
     let mut out = String::new();
     out.push_str(
         "Year,Age,Withdrawal Order,Ordinary Income,Qualified Dividends,Capital Gains,\
-         Social Security Benefits,Taxable Social Security,Adjusted Gross Income,\
+         Social Security Benefits,Taxable Social Security,Adjusted Gross Income,MAGI,\
          Standard Deduction,Taxable Income,Federal Ordinary Tax,Federal Capital Gains Tax,\
          Federal Tax,State Taxable Income,State Tax,Total Tax,Effective Rate,Marginal Rate,\
-         Roth Conversion\n",
+         Roth Conversion,Medicare Premiums\n",
     );
     for y in &projection.annual {
         let t = &y.tax;
         out.push_str(&format!(
-            "{},{},{},{:.2},{:.2},{:.2},{:.2},{:.2},{:.2},{:.2},{:.2},{:.2},{:.2},{:.2},{:.2},{:.2},{:.2},{:.4},{:.4},{:.2}\n",
+            "{},{},{},{:.2},{:.2},{:.2},{:.2},{:.2},{:.2},{:.2},{:.2},{:.2},{:.2},{:.2},{:.2},{:.2},{:.2},{:.2},{:.4},{:.4},{:.2},{:.2}\n",
             y.year,
             y.primary_age,
             y.withdrawal_order,
@@ -63,6 +63,7 @@ fn render_tax_summary_csv(projection: &ProjectionResponse) -> String {
             t.social_security_benefits,
             t.taxable_social_security,
             t.adjusted_gross_income,
+            t.magi,
             t.standard_deduction,
             t.taxable_income,
             t.federal_ordinary_tax,
@@ -74,6 +75,7 @@ fn render_tax_summary_csv(projection: &ProjectionResponse) -> String {
             t.effective_rate,
             t.marginal_rate,
             y.roth_conversion,
+            y.medicare_premiums,
         ));
     }
     out
@@ -100,6 +102,7 @@ mod tests {
             growth: 0.0,
             withdrawals: 0.0,
             rmd_amount: 0.0,
+            medicare_premiums: 0.0,
             contributions: 0.0,
             roth_conversion: 0.0,
             taxes: total_tax,
@@ -110,6 +113,7 @@ mod tests {
                 social_security_benefits: 0.0,
                 taxable_social_security: 0.0,
                 adjusted_gross_income: ordinary_income,
+                magi: ordinary_income,
                 standard_deduction: 15_000.0,
                 taxable_income: (ordinary_income - 15_000.0).max(0.0),
                 federal_ordinary_tax: total_tax,
@@ -150,6 +154,7 @@ mod tests {
                 roth_conversion_end_year: None,
                 withdrawal_strategy: "conventional".to_string(),
                 aca_benchmark_annual_premium: 0.0,
+                medicare_part_b_annual_premium: 0.0,
                 is_default: false,
             },
             summary: ProjectionSummary {
@@ -163,6 +168,7 @@ mod tests {
                 total_lifetime_state_taxes: 0.0,
                 total_lifetime_roth_conversions: 0.0,
                 total_lifetime_aca_subsidies: 0.0,
+                total_lifetime_medicare_premiums: 0.0,
                 depletion_year: None,
             },
             annual: vec![

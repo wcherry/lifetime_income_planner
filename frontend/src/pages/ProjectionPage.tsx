@@ -78,6 +78,9 @@ export function ProjectionPage() {
   // premium is configured, and the lifetime tile once any subsidy is received.
   const showAca = assumptions.aca_benchmark_annual_premium > 0;
   const currentAca = annual[0]?.aca;
+  // Medicare Part B premiums (Phase 3, feature 3): only worth a dedicated
+  // column once the plan actually reaches an age where they're charged.
+  const showMedicare = summary.total_lifetime_medicare_premiums > 0;
 
   async function handleDownloadTaxReport() {
     setDownloadError(null);
@@ -143,6 +146,15 @@ export function ProjectionPage() {
               {formatCurrency(summary.total_lifetime_aca_subsidies)}
             </span>
             <span className="tile-sub muted">lifetime premium tax credits</span>
+          </div>
+        )}
+        {showMedicare && (
+          <div className="tile">
+            <span className="tile-label">Medicare Part B</span>
+            <span className="tile-value">
+              {formatCurrency(summary.total_lifetime_medicare_premiums)}
+            </span>
+            <span className="tile-sub muted">lifetime premiums from age 65</span>
           </div>
         )}
       </div>
@@ -233,6 +245,7 @@ export function ProjectionPage() {
                 <th className="num">Start</th>
                 <th className="num">Income</th>
                 <th className="num">Spending</th>
+                {showMedicare && <th className="num">Medicare</th>}
                 <th className="num">Growth</th>
                 <th className="num">Withdrawals</th>
                 {showRoth && <th className="num">Roth conv.</th>}
@@ -254,6 +267,11 @@ export function ProjectionPage() {
                     <td className="num">{formatCurrency(y.starting_balance)}</td>
                     <td className="num">{formatCurrency(y.income)}</td>
                     <td className="num">{formatCurrency(y.spending)}</td>
+                    {showMedicare && (
+                      <td className="num">
+                        {y.medicare_premiums > 0 ? formatCurrency(y.medicare_premiums) : "—"}
+                      </td>
+                    )}
                     <td className="num">{formatCurrency(y.growth)}</td>
                     <td className="num">{formatCurrency(y.withdrawals)}</td>
                     {showRoth && (
@@ -391,6 +409,11 @@ function TaxBreakdownCard({
         </div>
       </div>
 
+      <p className="tax-magi-note muted">
+        Modified AGI (MAGI) — the figure used for ACA subsidy and (in a later phase) Medicare IRMAA
+        thresholds: <strong>{formatCurrency(tax.magi)}</strong>
+      </p>
+
       {/* Federal · State · Combined comparison */}
       <div className="table-scroll">
         <table className="tax-compare">
@@ -526,6 +549,7 @@ function TaxReportCard({
               <th className="num">Qual. div.</th>
               <th className="num">Cap. gains</th>
               <th className="num">Taxable SS</th>
+              <th className="num">MAGI</th>
               <th className="num">Taxable income</th>
               <th className="num">Federal tax</th>
               <th className="num">State tax</th>
@@ -548,6 +572,7 @@ function TaxReportCard({
                 <td className="num">{formatCurrency(y.tax.qualified_dividends)}</td>
                 <td className="num">{formatCurrency(y.tax.capital_gains)}</td>
                 <td className="num">{formatCurrency(y.tax.taxable_social_security)}</td>
+                <td className="num">{formatCurrency(y.tax.magi)}</td>
                 <td className="num">{formatCurrency(y.tax.taxable_income)}</td>
                 <td className="num">{formatCurrency(y.tax.federal_tax)}</td>
                 <td className="num">{formatCurrency(y.tax.state_tax)}</td>

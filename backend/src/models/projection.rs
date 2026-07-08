@@ -20,6 +20,9 @@ pub struct ProjectionAssumptions {
     /// ACA benchmark (SLCSP) annual premium driving subsidy modeling
     /// (Phase 3, feature 1); 0 when off.
     pub aca_benchmark_annual_premium: f64,
+    /// Medicare Part B annual premium per enrolled household member driving
+    /// automatic post-65 cost modeling (Phase 3, feature 3); 0 when off.
+    pub medicare_part_b_annual_premium: f64,
     /// True when the user has not saved assumptions and defaults were used.
     pub is_default: bool,
 }
@@ -44,6 +47,8 @@ pub struct ProjectionSummary {
     pub total_lifetime_roth_conversions: f64,
     /// Total ACA premium tax credit received over the plan (Phase 3, feature 1).
     pub total_lifetime_aca_subsidies: f64,
+    /// Total Medicare Part B premiums paid over the plan (Phase 3, feature 3).
+    pub total_lifetime_medicare_premiums: f64,
     /// First year in which spending could not be fully funded, if any.
     pub depletion_year: Option<i32>,
 }
@@ -65,6 +70,12 @@ pub struct YearTax {
     pub taxable_social_security: f64,
     /// Adjusted gross income (includes taxable Social Security).
     pub adjusted_gross_income: f64,
+    /// Modified Adjusted Gross Income (roadmap Phase 3, feature 2): AGI plus
+    /// the untaxed portion of Social Security benefits. Tracked every year —
+    /// regardless of ACA eligibility — so MAGI-driven thresholds (ACA
+    /// subsidies, and Medicare IRMAA surcharges in a later phase) can be
+    /// forecast across the whole plan, not just the current year.
+    pub magi: f64,
     /// Standard deduction applied (inflation-indexed, includes age-65 add-ons).
     pub standard_deduction: f64,
     /// Taxable income after the standard deduction.
@@ -161,6 +172,13 @@ pub struct YearProjection {
     /// spending doesn't need it all, the excess is reinvested (see
     /// `contributions`).
     pub rmd_amount: f64,
+    /// Medicare Part B premiums due this year (roadmap Phase 3, feature 3):
+    /// the standard premium per household member enrolled (age 65+),
+    /// inflation-indexed by the healthcare inflation rate. 0 before either
+    /// person turns 65 or when Medicare modeling is disabled. Treated as an
+    /// automatic cash need alongside spending, ahead of any future IRMAA
+    /// income-based surcharge.
+    pub medicare_premiums: f64,
     /// Surplus cash reinvested into accounts.
     pub contributions: f64,
     /// Dollars converted from tax-deferred to Roth this year (feature 6). The
