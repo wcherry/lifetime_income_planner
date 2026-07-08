@@ -13,6 +13,7 @@ const DEFAULTS: AssumptionsRequest = {
   roth_conversion_start_year: null,
   roth_conversion_end_year: null,
   withdrawal_strategy: "conventional",
+  aca_benchmark_annual_premium: 0,
 };
 
 const WITHDRAWAL_STRATEGY_OPTIONS: { value: WithdrawalStrategy; label: string }[] = [
@@ -49,6 +50,7 @@ export function AssumptionsPage() {
             roth_conversion_start_year: a.roth_conversion_start_year,
             roth_conversion_end_year: a.roth_conversion_end_year,
             withdrawal_strategy: a.withdrawal_strategy,
+            aca_benchmark_annual_premium: a.aca_benchmark_annual_premium,
           });
           setUsingDefaults(a.is_default);
         }
@@ -88,6 +90,7 @@ export function AssumptionsPage() {
         roth_conversion_start_year: form.roth_conversion_start_year,
         roth_conversion_end_year: form.roth_conversion_end_year,
         withdrawal_strategy: form.withdrawal_strategy,
+        aca_benchmark_annual_premium: Number(form.aca_benchmark_annual_premium),
       };
       await api.saveAssumptions(payload);
       setSaved(true);
@@ -263,6 +266,34 @@ export function AssumptionsPage() {
                 </option>
               ))}
             </Select>
+          </Field>
+        </div>
+
+        <h3 className="assumptions-subhead">ACA health insurance subsidy</h3>
+        <p className="muted">
+          Before Medicare (age 65), a marketplace plan may qualify for a premium tax credit that
+          caps what you pay based on your income. Enter your <strong>benchmark premium</strong> — the
+          annual cost of the second-lowest-cost silver plan for your household (from HealthCare.gov
+          or your state exchange) — and the planner estimates the subsidy each pre-Medicare year, net
+          of the income your withdrawals and Roth conversions create. Set it to $0 to skip ACA
+          modeling. It grows with your healthcare inflation rate.
+        </p>
+
+        <div className="grid-2">
+          <Field
+            label="Benchmark silver premium ($/yr)"
+            htmlFor="aca-benchmark"
+            hint="Annual second-lowest silver (SLCSP) premium for your household. 0 disables."
+          >
+            <TextInput
+              id="aca-benchmark"
+              type="number"
+              step="500"
+              min="0"
+              value={form.aca_benchmark_annual_premium}
+              onChange={(e) => update("aca_benchmark_annual_premium", Number(e.target.value))}
+              required
+            />
           </Field>
         </div>
 

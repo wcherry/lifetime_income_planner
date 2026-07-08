@@ -74,6 +74,10 @@ pub struct AssumptionsSnapshot {
     // before the feature existed still load.
     #[serde(default)]
     pub withdrawal_strategy: String,
+    // ACA benchmark premium (Phase 3, feature 1). Defaulted for plans saved
+    // before the feature existed.
+    #[serde(default)]
+    pub aca_benchmark_annual_premium: f64,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -209,6 +213,7 @@ impl From<&Assumptions> for AssumptionsSnapshot {
             roth_conversion_start_year: a.roth_conversion_start_year,
             roth_conversion_end_year: a.roth_conversion_end_year,
             withdrawal_strategy: a.withdrawal_strategy.clone(),
+            aca_benchmark_annual_premium: a.aca_benchmark_annual_premium,
         }
     }
 }
@@ -320,6 +325,7 @@ impl AssumptionsSnapshot {
             roth_conversion_start_year: self.roth_conversion_start_year,
             roth_conversion_end_year: self.roth_conversion_end_year,
             withdrawal_strategy: self.withdrawal_strategy.clone(),
+            aca_benchmark_annual_premium: self.aca_benchmark_annual_premium,
         }
     }
 }

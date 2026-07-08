@@ -9,7 +9,13 @@ import {
   planOutlook,
   rmdExceedsSpendingBy,
 } from "./projection";
-import type { Projection, ProjectionSummary, YearProjection, YearTax } from "../api/types";
+import type {
+  Projection,
+  ProjectionSummary,
+  YearAca,
+  YearProjection,
+  YearTax,
+} from "../api/types";
 
 const baseSummary: ProjectionSummary = {
   current_net_worth: 100000,
@@ -21,7 +27,19 @@ const baseSummary: ProjectionSummary = {
   total_lifetime_federal_taxes: 0,
   total_lifetime_state_taxes: 0,
   total_lifetime_roth_conversions: 0,
+  total_lifetime_aca_subsidies: 0,
   depletion_year: null,
+};
+
+const emptyAca: YearAca = {
+  eligible: false,
+  magi: 0,
+  federal_poverty_line: 0,
+  fpl_percent: 0,
+  applicable_percentage: 0,
+  expected_contribution: 0,
+  benchmark_premium: 0,
+  subsidy: 0,
 };
 
 const emptyTax: YearTax = {
@@ -65,6 +83,7 @@ function year(overrides: Partial<YearProjection>): YearProjection {
     taxes: 0,
     tax: emptyTax,
     withdrawal_order: "taxable_first",
+    aca: emptyAca,
     ending_balance: 0,
     shortfall: 0,
     ...overrides,
@@ -89,6 +108,7 @@ function projectionWith(
       roth_conversion_start_year: null,
       roth_conversion_end_year: null,
       withdrawal_strategy: "conventional",
+      aca_benchmark_annual_premium: 0,
       is_default: true,
     },
     summary,

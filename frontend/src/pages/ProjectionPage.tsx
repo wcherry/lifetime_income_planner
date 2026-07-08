@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { api, ApiError } from "../api/client";
-import type { EstimatedTaxes, Projection, YearProjection, YearTax } from "../api/types";
+import type { EstimatedTaxes, Projection, YearAca, YearProjection, YearTax } from "../api/types";
 import { Alert, Button, Card } from "../components/ui";
 import { NetWorthChart } from "../components/NetWorthChart";
 import {
@@ -74,6 +74,10 @@ export function ProjectionPage() {
   // The optimized strategy (feature 9) reorders accounts per year; only worth
   // a dedicated column once it's actually in use.
   const showWithdrawalOrder = assumptions.withdrawal_strategy === "tax_optimized";
+  // ACA subsidy (Phase 3, feature 1): show the detail whenever a benchmark
+  // premium is configured, and the lifetime tile once any subsidy is received.
+  const showAca = assumptions.aca_benchmark_annual_premium > 0;
+  const currentAca = annual[0]?.aca;
 
   async function handleDownloadTaxReport() {
     setDownloadError(null);
@@ -130,6 +134,15 @@ export function ProjectionPage() {
               {formatCurrency(summary.total_lifetime_roth_conversions)}
             </span>
             <span className="tile-sub muted">traditional → Roth over the plan</span>
+          </div>
+        )}
+        {summary.total_lifetime_aca_subsidies > 0 && (
+          <div className="tile tile-good">
+            <span className="tile-label">ACA subsidies</span>
+            <span className="tile-value">
+              {formatCurrency(summary.total_lifetime_aca_subsidies)}
+            </span>
+            <span className="tile-sub muted">lifetime premium tax credits</span>
           </div>
         )}
       </div>
@@ -203,6 +216,11 @@ export function ProjectionPage() {
         downloading={downloading}
         downloadError={downloadError}
       />
+
+      {/* ACA subsidy for the current year (Phase 3, feature 1) */}
+      {showAca && currentAca && (
+        <AcaSubsidyCard aca={currentAca} year={projection.start_year} />
+      )}
 
       {/* Annual projection table (Phase 1, feature 8) */}
       <Card title="Year-by-year projection" collapsible>
@@ -541,6 +559,55 @@ function TaxReportCard({
           </tbody>
         </table>
       </div>
+    </Card>
+  );
+}
+
+/**
+ * ACA premium tax credit for the current year (Phase 3, feature 1): the MAGI →
+ * FPL % → expected contribution buildup and the resulting subsidy, or a note
+ * when the household is not eligible this year.
+ */
+function AcaSubsidyCard({ aca, year }: { aca: YearAca; year: number }) {
+  const notEligibleReason =
+    aca.magi > 0 && aca.fpl_percent < 100
+      ? "Income is below 100% of the poverty line — Medicaid territory, so no marketplace premium tax credit."
+      : "No premium tax credit this year — the household is at or past Medicare age (65), or income is too low to determine one.";
+
+  return (
+    <Card title={`ACA health insurance subsidy · ${year}`}>
+      <p className="muted">
+        The premium tax credit caps what you pay for the benchmark silver plan based on your income
+        relative to the Federal Poverty Line. Withdrawals and Roth conversions raise your MAGI, which
+        shrinks the credit — the tradeoff the planner makes visible.
+      </p>
+      {!aca.eligible ? (
+        <p className="muted center">{notEligibleReason}</p>
+      ) : (
+        <dl className="tax-lines aca-lines">
+          <TaxLine label="Modified AGI (MAGI)" value={aca.magi} />
+          <TaxLine label="Federal Poverty Line" value={aca.federal_poverty_line} />
+          <div className="tax-line">
+            <dt>Income as % of poverty line</dt>
+            <dd>{aca.fpl_percent.toFixed(0)}%</dd>
+          </div>
+          <div className="tax-line">
+            <dt>
+              Expected contribution
+              <span className="muted tax-hint">
+                {" "}
+                {formatRate(aca.applicable_percentage)} of MAGI
+              </span>
+            </dt>
+            <dd>{formatCurrency(aca.expected_contribution)}</dd>
+          </div>
+          <TaxLine label="Benchmark silver premium" value={aca.benchmark_premium} />
+          <div className="tax-line tax-line-strong">
+            <dt>Premium tax credit (subsidy)</dt>
+            <dd>{formatCurrency(aca.subsidy)}</dd>
+          </div>
+        </dl>
+      )}
     </Card>
   );
 }

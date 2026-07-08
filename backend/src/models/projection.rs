@@ -17,6 +17,9 @@ pub struct ProjectionAssumptions {
     /// Withdrawal sequencing strategy driving the drawdown order (Phase 2,
     /// feature 9): `"conventional"` or `"tax_optimized"`.
     pub withdrawal_strategy: String,
+    /// ACA benchmark (SLCSP) annual premium driving subsidy modeling
+    /// (Phase 3, feature 1); 0 when off.
+    pub aca_benchmark_annual_premium: f64,
     /// True when the user has not saved assumptions and defaults were used.
     pub is_default: bool,
 }
@@ -39,6 +42,8 @@ pub struct ProjectionSummary {
     pub total_lifetime_state_taxes: f64,
     /// Total dollars converted from tax-deferred to Roth over the plan (feature 6).
     pub total_lifetime_roth_conversions: f64,
+    /// Total ACA premium tax credit received over the plan (Phase 3, feature 1).
+    pub total_lifetime_aca_subsidies: f64,
     /// First year in which spending could not be fully funded, if any.
     pub depletion_year: Option<i32>,
 }
@@ -83,6 +88,30 @@ pub struct YearTax {
     pub effective_rate: f64,
     /// Federal ordinary marginal tax rate (fraction) at the top of taxable income.
     pub marginal_rate: f64,
+}
+
+/// One year's ACA premium tax credit detail (roadmap Phase 3, feature 1). All
+/// amounts are annual dollars.
+#[derive(Debug, Clone, Serialize, ToSchema, Default)]
+pub struct YearAca {
+    /// Whether the household qualifies for a premium tax credit this year (a
+    /// benchmark premium is set, the household is pre-Medicare, and income is at
+    /// or above the poverty line).
+    pub eligible: bool,
+    /// Modified Adjusted Gross Income used for the ACA determination.
+    pub magi: f64,
+    /// Federal Poverty Line for the household size this year (inflation-indexed).
+    pub federal_poverty_line: f64,
+    /// MAGI as a percentage of the poverty line (e.g. 250.0 for 250%).
+    pub fpl_percent: f64,
+    /// Share of MAGI the household is expected to contribute (fraction).
+    pub applicable_percentage: f64,
+    /// Annual dollars the household is expected to pay toward the benchmark.
+    pub expected_contribution: f64,
+    /// The benchmark (SLCSP) premium used this year (inflation-adjusted).
+    pub benchmark_premium: f64,
+    /// The premium tax credit (annual subsidy) received this year.
+    pub subsidy: f64,
 }
 
 /// A single life event occurring within a projection year.
@@ -147,6 +176,9 @@ pub struct YearProjection {
     /// because realizing this year's taxable gains would have cost more at
     /// the margin than an equivalent ordinary withdrawal).
     pub withdrawal_order: String,
+    /// ACA premium tax credit detail for the year (Phase 3, feature 1). The
+    /// subsidy is a tax-free cash inflow that reduces the year's withdrawal need.
+    pub aca: YearAca,
     /// Total account balance at the end of the year.
     pub ending_balance: f64,
     /// Spending (or taxes) that could not be funded because accounts were exhausted.

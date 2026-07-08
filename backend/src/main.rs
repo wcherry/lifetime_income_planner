@@ -1,3 +1,4 @@
+mod aca;
 mod auth;
 mod config;
 mod db;

@@ -84,6 +84,7 @@ pub async fn upsert_assumptions(
         roth_conversion_start_year: payload.roth_conversion_start_year,
         roth_conversion_end_year: payload.roth_conversion_end_year,
         withdrawal_strategy: payload.withdrawal_strategy.as_str().to_string(),
+        aca_benchmark_annual_premium: payload.aca_benchmark_annual_premium,
     };
 
     let pool = pool.clone();
@@ -113,6 +114,8 @@ pub async fn upsert_assumptions(
                         assumptions::roth_conversion_end_year
                             .eq(new_row.roth_conversion_end_year),
                         assumptions::withdrawal_strategy.eq(new_row.withdrawal_strategy.clone()),
+                        assumptions::aca_benchmark_annual_premium
+                            .eq(new_row.aca_benchmark_annual_premium),
                     ))
                     .execute(&mut conn)?;
             }

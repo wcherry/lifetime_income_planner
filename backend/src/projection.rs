@@ -14,10 +14,11 @@ use std::collections::HashMap;
 
 use chrono::{Datelike, Months, NaiveDate};
 
+use crate::aca::{compute_subsidy, AcaInput, AcaResult, AcaTables};
 use crate::models::{
     Account, EstimatedTaxPayment, EstimatedTaxes, IncomeSource, LifeEvent, LifeEventOccurrence,
     Milestone, Profile, ProjectionAssumptions, ProjectionResponse, ProjectionSummary,
-    QuarterProjection, QuarterWithdrawal, SpendingItem, YearProjection, YearTax,
+    QuarterProjection, QuarterWithdrawal, SpendingItem, YearAca, YearProjection, YearTax,
 };
 use crate::tax::{compute_taxes, FilingStatusKind, TaxInput, TaxResult, TaxTables};
 
@@ -45,9 +46,14 @@ pub struct ProjectionInputs<'a> {
     /// (default) or `"tax_optimized"`. Unrecognized values fall back to
     /// conventional.
     pub withdrawal_strategy: String,
+    /// ACA benchmark (SLCSP) annual premium (Phase 3, feature 1). 0 disables ACA
+    /// subsidy modeling. Grows with the healthcare inflation rate over the plan.
+    pub aca_benchmark_annual_premium: f64,
     /// Reference tax parameters (brackets, deductions, state rates), loaded from
     /// the database and read by the tax engine.
     pub tax_tables: TaxTables,
+    /// Reference ACA parameters (FPL guidelines, applicable-percentage curve).
+    pub aca_tables: AcaTables,
 }
 
 /// Withdrawal sequencing strategy (Phase 2, feature 9), parsed from the stored
@@ -410,6 +416,12 @@ pub fn run_projection(inp: &ProjectionInputs) -> ProjectionResponse {
 
     let filing_status = FilingStatusKind::from_str(&inp.profile.filing_status);
     let withdrawal_strategy = WithdrawalStrategyKind::from_str(&inp.withdrawal_strategy);
+    // ACA tax-household size: a joint return is a two-person household, everyone
+    // else is modeled as one (dependents are not tracked in this phase).
+    let household_size = match filing_status {
+        FilingStatusKind::MarriedFilingJointly | FilingStatusKind::QualifyingWidow => 2,
+        _ => 1,
+    };
 
     // Drawdown order: category priority, then largest balance first, then
     // original order for stability. "other" accounts are excluded.
@@ -450,6 +462,7 @@ pub fn run_projection(inp: &ProjectionInputs) -> ProjectionResponse {
     let mut total_federal_taxes = 0.0;
     let mut total_state_taxes = 0.0;
     let mut total_roth_conversions = 0.0;
+    let mut total_aca_subsidies = 0.0;
     let mut depletion_year: Option<i32> = None;
 
     for year in start_year..=end_year {
@@ -613,15 +626,32 @@ pub fn run_projection(inp: &ProjectionInputs) -> ProjectionResponse {
                 (order.clone(), "taxable_first")
             };
 
-        // Solve withdrawals and tax together. Drawing from a tax-deferred
-        // account adds ordinary income, which raises tax, which raises the
-        // amount that must be withdrawn — a short fixed-point iteration
-        // converges quickly.
+        // ---- ACA subsidy eligibility (Phase 3, feature 1) -----------------
+        // The premium tax credit applies before Medicare: model it whenever a
+        // benchmark premium is set and the youngest household member is under
+        // 65. The benchmark premium grows with the healthcare inflation rate.
+        let youngest_age = match spouse_birth_year {
+            Some(sb) => (year - birth_year).min(year - sb),
+            None => year - birth_year,
+        };
+        let aca_window = inp.aca_benchmark_annual_premium > 0.0 && youngest_age < 65;
+        let benchmark_this_year = inp.aca_benchmark_annual_premium
+            * growth_factor(inp.healthcare_inflation_rate, year - inp.current_year);
+
+        // Solve withdrawals, tax, and ACA subsidy together. Drawing from a
+        // tax-deferred account (or converting to Roth) adds ordinary income,
+        // which raises tax and MAGI: more tax raises the amount that must be
+        // withdrawn, while a higher MAGI shrinks the ACA subsidy that offsets
+        // it, and any RMD shortfall still forces a floor on tax-deferred
+        // withdrawals regardless. A short fixed-point iteration settles all three.
         let mut plan = WithdrawalPlan::default();
         let mut tax = TaxResult::default();
+        let mut aca = AcaResult::default();
         let mut tax_estimate = 0.0;
-        for _ in 0..8 {
-            let need = (tax_estimate - base_cash).max(0.0);
+        let mut subsidy = 0.0;
+        for _ in 0..12 {
+            // The subsidy is tax-free cash, so it reduces the withdrawal need.
+            let need = (tax_estimate - base_cash - subsidy).max(0.0);
             plan = plan_withdrawals(
                 need,
                 rmd_amount,
@@ -644,10 +674,32 @@ pub fn run_projection(inp: &ProjectionInputs) -> ProjectionResponse {
                 state: &inp.profile.state,
             };
             tax = compute_taxes(&input, &inp.tax_tables);
-            if (tax.total_tax - tax_estimate).abs() < 0.5 {
+
+            // ACA MAGI adds back the untaxed portion of Social Security to AGI.
+            let mut new_subsidy = 0.0;
+            if aca_window {
+                let magi =
+                    tax.adjusted_gross_income + (ss_benefits - tax.taxable_social_security).max(0.0);
+                aca = compute_subsidy(
+                    &AcaInput {
+                        year,
+                        inflation_rate: inp.inflation_rate,
+                        magi,
+                        household_size,
+                        benchmark_annual_premium: benchmark_this_year,
+                    },
+                    &inp.aca_tables,
+                );
+                new_subsidy = aca.subsidy;
+            }
+
+            let converged = (tax.total_tax - tax_estimate).abs() < 0.5
+                && (new_subsidy - subsidy).abs() < 0.5;
+            tax_estimate = tax.total_tax;
+            subsidy = new_subsidy;
+            if converged {
                 break;
             }
-            tax_estimate = tax.total_tax;
         }
 
         // Apply the settled withdrawal plan to real balances and basis.
@@ -683,8 +735,9 @@ pub fn run_projection(inp: &ProjectionInputs) -> ProjectionResponse {
         // also captures the after-tax proceeds of a forced RMD draw that
         // exceeded what spending actually needed (`withdrawals` can now run
         // ahead of the spending/tax gap `base_cash - tax.total_tax` alone
-        // would imply).
-        let surplus = base_cash + withdrawals - tax.total_tax;
+        // would imply), plus the ACA subsidy, which is tax-free cash that adds
+        // to the surplus.
+        let surplus = base_cash + subsidy + withdrawals - tax.total_tax;
         if surplus > 0.0 {
             if let Some(idx) = reinvest_target {
                 balances[idx] += surplus;
@@ -708,6 +761,7 @@ pub fn run_projection(inp: &ProjectionInputs) -> ProjectionResponse {
         total_federal_taxes += tax.federal_tax;
         total_state_taxes += tax.state_tax;
         total_roth_conversions += roth_conversion;
+        total_aca_subsidies += subsidy;
         if year == start_year {
             first_year_tax = tax.total_tax;
         }
@@ -750,6 +804,16 @@ pub fn run_projection(inp: &ProjectionInputs) -> ProjectionResponse {
                 marginal_rate: tax.marginal_rate,
             },
             withdrawal_order: withdrawal_order_label.to_string(),
+            aca: YearAca {
+                eligible: aca.eligible,
+                magi: round2(aca.magi),
+                federal_poverty_line: round2(aca.federal_poverty_line),
+                fpl_percent: round2(aca.fpl_percent),
+                applicable_percentage: aca.applicable_percentage,
+                expected_contribution: round2(aca.expected_contribution),
+                benchmark_premium: round2(aca.benchmark_premium),
+                subsidy: round2(subsidy),
+            },
             ending_balance: round2(ending_balance),
             shortfall: round2(shortfall),
         });
@@ -779,6 +843,7 @@ pub fn run_projection(inp: &ProjectionInputs) -> ProjectionResponse {
             roth_conversion_start_year: inp.roth_conversion_start_year,
             roth_conversion_end_year: inp.roth_conversion_end_year,
             withdrawal_strategy: inp.withdrawal_strategy.clone(),
+            aca_benchmark_annual_premium: inp.aca_benchmark_annual_premium,
             is_default: inp.assumptions_are_default,
         },
         summary: ProjectionSummary {
@@ -791,6 +856,7 @@ pub fn run_projection(inp: &ProjectionInputs) -> ProjectionResponse {
             total_lifetime_federal_taxes: round2(total_federal_taxes),
             total_lifetime_state_taxes: round2(total_state_taxes),
             total_lifetime_roth_conversions: round2(total_roth_conversions),
+            total_lifetime_aca_subsidies: round2(total_aca_subsidies),
             depletion_year,
         },
         annual,
@@ -1315,7 +1381,9 @@ mod tests {
             roth_conversion_start_year: None,
             roth_conversion_end_year: None,
             withdrawal_strategy: "conventional".to_string(),
+            aca_benchmark_annual_premium: 0.0,
             tax_tables: TaxTables::default_2025(),
+            aca_tables: crate::aca::AcaTables::default_2025(),
         }
     }
 
@@ -1921,5 +1989,94 @@ mod tests {
         let spend = [spending("living", "essential", 80_000.0, "annual", false)];
         let out = run_projection(&base_inputs(&p, &accts, &[], &spend, &[]));
         assert_eq!(out.annual[0].withdrawal_order, "taxable_first");
+    }
+
+    // ---- Phase 3, feature 1: ACA subsidy ------------------------------------
+
+    #[test]
+    fn aca_subsidy_offsets_spending_before_medicare() {
+        // Single filer age 61 with $30k taxable pension (~192% FPL). A $12k
+        // benchmark premium yields a large premium tax credit that offsets
+        // spending, so far less has to be withdrawn than without it.
+        let p = profile(1965, 2026 - 1965);
+        let mut cash = account("cash", "taxable", 100_000.0, 0.0);
+        cash.cost_basis = Some(100_000.0);
+        let accts = [cash];
+        let inc = [income("pension", 30_000.0, "annual", date(2020, 1, 1), false, 0.0)];
+        let spend = [spending("living", "essential", 40_000.0, "annual", false)];
+
+        let mut with_aca = base_inputs(&p, &accts, &inc, &spend, &[]);
+        with_aca.aca_benchmark_annual_premium = 12_000.0;
+        let out = run_projection(&with_aca);
+        let y = &out.annual[0];
+        assert!(y.aca.eligible);
+        assert!((y.aca.fpl_percent - 191.7).abs() < 1.0);
+        assert!((y.aca.subsidy - 11_500.0).abs() < 50.0);
+        assert!((out.summary.total_lifetime_aca_subsidies - y.aca.subsidy).abs() < 1.0);
+
+        // Without the benchmark, the same plan withdraws far more to cover the
+        // spending gap the subsidy would otherwise fill.
+        let out_none = run_projection(&base_inputs(&p, &accts, &inc, &spend, &[]));
+        assert_eq!(out_none.annual[0].aca.subsidy, 0.0);
+        assert!(out_none.annual[0].withdrawals > y.withdrawals + 10_000.0);
+    }
+
+    #[test]
+    fn aca_subsidy_stops_at_medicare_age() {
+        // Age 68: past Medicare eligibility, so no ACA subsidy even with a
+        // benchmark premium set.
+        let p = profile(1958, 2026 - 1958);
+        let inc = [income("pension", 30_000.0, "annual", date(2020, 1, 1), false, 0.0)];
+        let mut inputs = base_inputs(&p, &[], &inc, &[], &[]);
+        inputs.aca_benchmark_annual_premium = 12_000.0;
+        let out = run_projection(&inputs);
+        assert!(!out.annual[0].aca.eligible);
+        assert_eq!(out.annual[0].aca.subsidy, 0.0);
+    }
+
+    #[test]
+    fn aca_ineligible_below_the_poverty_line() {
+        // Age 61 but income (Roth-funded, so ~$0 MAGI) is under 100% FPL:
+        // Medicaid territory, no premium tax credit.
+        let p = profile(1965, 2026 - 1965);
+        let accts = [account("roth", "tax_free", 300_000.0, 0.0)];
+        let spend = [spending("living", "essential", 40_000.0, "annual", false)];
+        let mut inputs = base_inputs(&p, &accts, &[], &spend, &[]);
+        inputs.aca_benchmark_annual_premium = 12_000.0;
+        let out = run_projection(&inputs);
+        assert!(out.annual[0].aca.fpl_percent < 100.0);
+        assert!(!out.annual[0].aca.eligible);
+        assert_eq!(out.annual[0].aca.subsidy, 0.0);
+    }
+
+    #[test]
+    fn roth_conversion_shrinks_the_aca_subsidy() {
+        // The core ACA/Roth tradeoff: converting to Roth raises MAGI, which
+        // pushes the household up the FPL scale and shrinks the subsidy.
+        let p = profile(1962, 2026 - 1962); // age 64, still pre-Medicare
+        let mut cash = account("cash", "taxable", 100_000.0, 0.0);
+        cash.cost_basis = Some(100_000.0);
+        let accts = [
+            cash,
+            account("ira", "tax_deferred", 500_000.0, 0.0),
+            account("roth", "tax_free", 10_000.0, 0.0),
+        ];
+        let inc = [income("pension", 25_000.0, "annual", date(2020, 1, 1), false, 0.0)];
+
+        let mut without = base_inputs(&p, &accts, &inc, &[], &[]);
+        without.aca_benchmark_annual_premium = 15_000.0;
+        let base = run_projection(&without);
+
+        let mut with_conv = base_inputs(&p, &accts, &inc, &[], &[]);
+        with_conv.aca_benchmark_annual_premium = 15_000.0;
+        with_conv.roth_conversion_ceiling = 50_000.0;
+        let conv = run_projection(&with_conv);
+
+        assert!(conv.annual[0].roth_conversion > 0.0);
+        assert!(conv.annual[0].aca.magi > base.annual[0].aca.magi);
+        assert!(conv.annual[0].aca.subsidy < base.annual[0].aca.subsidy);
+        // Both still receive some subsidy (both under the benchmark).
+        assert!(base.annual[0].aca.subsidy > 0.0);
+        assert!(conv.annual[0].aca.subsidy > 0.0);
     }
 }

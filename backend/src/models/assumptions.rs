@@ -16,6 +16,8 @@ pub const DEFAULT_ROTH_CONVERSION_CEILING: f64 = 0.0;
 /// The conventional (taxable -> tax-deferred -> tax-free) sequencing is the
 /// default; tax-optimized sequencing (feature 9) is opt-in.
 pub const DEFAULT_WITHDRAWAL_STRATEGY: &str = "conventional";
+/// ACA subsidy modeling is off by default (a benchmark premium of 0 disables it).
+pub const DEFAULT_ACA_BENCHMARK_ANNUAL_PREMIUM: f64 = 0.0;
 
 /// Withdrawal sequencing strategy (roadmap Phase 2, feature 9): which order the
 /// engine draws from accounts to cover a year's cash need.
@@ -70,6 +72,9 @@ pub struct Assumptions {
     /// Optional first/last calendar years the conversion strategy applies.
     pub roth_conversion_start_year: Option<i32>,
     pub roth_conversion_end_year: Option<i32>,
+    /// ACA subsidy modeling (Phase 3, feature 1): the annual benchmark (SLCSP)
+    /// premium the household faces. 0 disables ACA subsidy modeling.
+    pub aca_benchmark_annual_premium: f64,
     /// Withdrawal sequencing strategy (feature 9), stored as its `as_str()` form.
     pub withdrawal_strategy: String,
 }
@@ -88,6 +93,7 @@ pub struct NewAssumptions {
     pub roth_conversion_ceiling: f64,
     pub roth_conversion_start_year: Option<i32>,
     pub roth_conversion_end_year: Option<i32>,
+    pub aca_benchmark_annual_premium: f64,
     pub withdrawal_strategy: String,
 }
 
@@ -127,6 +133,13 @@ pub struct AssumptionsRequest {
     #[serde(default)]
     pub roth_conversion_end_year: Option<i32>,
 
+    /// ACA benchmark (SLCSP) annual premium (Phase 3, feature 1). 0 disables
+    /// ACA subsidy modeling.
+    #[validate(range(min = 0.0, max = 1_000_000.0, message = "must be between 0 and 1,000,000"))]
+    #[serde(default)]
+    #[schema(example = 0.0)]
+    pub aca_benchmark_annual_premium: f64,
+
     /// Withdrawal sequencing strategy (feature 9). Defaults to conventional.
     #[serde(default)]
     pub withdrawal_strategy: WithdrawalStrategy,
@@ -142,6 +155,7 @@ pub struct AssumptionsResponse {
     pub roth_conversion_ceiling: f64,
     pub roth_conversion_start_year: Option<i32>,
     pub roth_conversion_end_year: Option<i32>,
+    pub aca_benchmark_annual_premium: f64,
     pub withdrawal_strategy: WithdrawalStrategy,
     /// True when no assumptions have been saved yet and defaults are being returned.
     pub is_default: bool,
@@ -160,6 +174,7 @@ impl AssumptionsResponse {
             roth_conversion_ceiling: DEFAULT_ROTH_CONVERSION_CEILING,
             roth_conversion_start_year: None,
             roth_conversion_end_year: None,
+            aca_benchmark_annual_premium: DEFAULT_ACA_BENCHMARK_ANNUAL_PREMIUM,
             withdrawal_strategy: WithdrawalStrategy::Conventional,
             is_default: true,
             updated_at: None,
@@ -177,6 +192,7 @@ impl From<Assumptions> for AssumptionsResponse {
             roth_conversion_ceiling: a.roth_conversion_ceiling,
             roth_conversion_start_year: a.roth_conversion_start_year,
             roth_conversion_end_year: a.roth_conversion_end_year,
+            aca_benchmark_annual_premium: a.aca_benchmark_annual_premium,
             withdrawal_strategy: WithdrawalStrategy::from_str(&a.withdrawal_strategy),
             is_default: false,
             updated_at: Some(a.updated_at),

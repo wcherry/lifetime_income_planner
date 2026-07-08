@@ -6,6 +6,47 @@ the full product vision and phased roadmap.
 
 ## Status
 
+**Phase 3 (Healthcare & Regulatory Intelligence) in progress — features 1 and 5
+complete.** A pure, unit-tested ACA engine (`backend/src/aca.rs`) computes the
+Affordable Care Act premium tax credit for each pre-Medicare projection year,
+and the projection engine now enforces required minimum distributions:
+
+1. **ACA subsidy calculations** — the household's Modified AGI is measured
+   against the Federal Poverty Line for its size; where it lands on the FPL
+   scale sets the "applicable percentage" of income it is expected to contribute
+   toward the benchmark (second-lowest silver) plan, on the enhanced schedule in
+   effect through 2025 (0% at/below 150% FPL rising to 8.5% at 400%+, no subsidy
+   cliff). The premium tax credit is the benchmark premium minus that expected
+   contribution. The subsidy is modeled as tax-free cash that offsets the year's
+   withdrawal need whenever the youngest household member is under 65 and a
+   benchmark premium is set. Because MAGI includes tax-deferred withdrawals and
+   Roth conversions, the subsidy is solved together with tax and withdrawals in
+   the same per-year fixed point — so a Roth conversion that raises MAGI visibly
+   shrinks the subsidy, making the ACA/conversion tradeoff explicit. Set the
+   benchmark premium on the **Assumptions** page; the Plan page shows a
+   lifetime-subsidies tile and a current-year MAGI → FPL % → contribution →
+   subsidy breakdown.
+
+The FPL guidelines and the applicable-percentage curve live in dedicated
+database tables (`aca_fpl_guidelines`, `aca_applicable_percentages`), seeded at
+startup from the app's built-in 2025 figures and read per request — the same
+admin-maintainable pattern as the tax tables. FPL guidelines are inflation-
+indexed across the horizon.
+
+5. **Required Minimum Distribution (RMD) calculations** — each owner's annual
+   RMD is computed from their prior year-end tax-deferred balance divided by
+   the IRS Uniform Lifetime Table divisor for their age, once they've reached
+   their RMD age (72/73/75 by birth year, per SECURE 2.0). The projection
+   engine enforces this as a floor on tax-deferred withdrawals: if spending
+   wouldn't otherwise draw enough, the shortfall is forced, taxed as ordinary
+   income, and any excess over spending needs is reinvested. The Plan page
+   flags any year where the RMD exceeds that year's spending need with a
+   warning icon in the year-by-year table.
+
+Still to come in Phase 3: MAGI tracking/forecasting, Medicare enrollment events,
+IRMAA forecasting, Roth conversion timing around IRMAA/RMDs, and regulatory
+alerts (features 2–4, 6–7).
+
 **Phase 2 (Tax Optimization) complete — all 9 features.** The
 projection engine is now tax-aware. A pure, unit-tested tax engine
 (`backend/src/tax.rs`) computes each projection year's liability and the

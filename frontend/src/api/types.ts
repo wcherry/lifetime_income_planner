@@ -234,6 +234,7 @@ export interface Assumptions {
   roth_conversion_ceiling: number;
   roth_conversion_start_year: number | null;
   roth_conversion_end_year: number | null;
+  aca_benchmark_annual_premium: number;
   withdrawal_strategy: WithdrawalStrategy;
   is_default: boolean;
   updated_at: string | null;
@@ -247,6 +248,7 @@ export interface AssumptionsRequest {
   roth_conversion_ceiling: number;
   roth_conversion_start_year?: number | null;
   roth_conversion_end_year?: number | null;
+  aca_benchmark_annual_premium: number;
   withdrawal_strategy: WithdrawalStrategy;
 }
 
@@ -260,6 +262,7 @@ export interface ProjectionAssumptions {
   roth_conversion_end_year: number | null;
   /** Withdrawal sequencing strategy driving the drawdown order (feature 9). */
   withdrawal_strategy: string;
+  aca_benchmark_annual_premium: number;
   is_default: boolean;
 }
 
@@ -273,7 +276,21 @@ export interface ProjectionSummary {
   total_lifetime_federal_taxes: number;
   total_lifetime_state_taxes: number;
   total_lifetime_roth_conversions: number;
+  total_lifetime_aca_subsidies: number;
   depletion_year: number | null;
+}
+
+export interface YearAca {
+  eligible: boolean;
+  magi: number;
+  federal_poverty_line: number;
+  /** MAGI as a percentage of the poverty line (e.g. 250.0 for 250%). */
+  fpl_percent: number;
+  /** Expected contribution as a fraction of MAGI (e.g. 0.04 for 4%). */
+  applicable_percentage: number;
+  expected_contribution: number;
+  benchmark_premium: number;
+  subsidy: number;
 }
 
 export interface YearTax {
@@ -333,6 +350,7 @@ export interface YearProjection {
   tax: YearTax;
   /** Which category was drawn from first this year (feature 9): "taxable_first" or "tax_deferred_first". */
   withdrawal_order: string;
+  aca: YearAca;
   ending_balance: number;
   shortfall: number;
 }

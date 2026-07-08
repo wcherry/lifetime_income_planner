@@ -83,7 +83,7 @@ fn render_tax_summary_csv(projection: &ProjectionResponse) -> String {
 mod tests {
     use super::*;
     use crate::models::{
-        EstimatedTaxes, ProjectionAssumptions, ProjectionSummary, YearTax,
+        EstimatedTaxes, ProjectionAssumptions, ProjectionSummary, YearAca, YearTax,
     };
 
     fn sample_year(year: i32, ordinary_income: f64, total_tax: f64) -> crate::models::YearProjection {
@@ -129,6 +129,7 @@ mod tests {
                 marginal_rate: 0.12,
             },
             withdrawal_order: "taxable_first".to_string(),
+            aca: YearAca::default(),
             ending_balance: 0.0,
             shortfall: 0.0,
         }
@@ -148,6 +149,7 @@ mod tests {
                 roth_conversion_start_year: None,
                 roth_conversion_end_year: None,
                 withdrawal_strategy: "conventional".to_string(),
+                aca_benchmark_annual_premium: 0.0,
                 is_default: false,
             },
             summary: ProjectionSummary {
@@ -160,6 +162,7 @@ mod tests {
                 total_lifetime_federal_taxes: 0.0,
                 total_lifetime_state_taxes: 0.0,
                 total_lifetime_roth_conversions: 0.0,
+                total_lifetime_aca_subsidies: 0.0,
                 depletion_year: None,
             },
             annual: vec![

@@ -5,12 +5,14 @@ use diesel::prelude::*;
 use crate::auth::AuthUser;
 use crate::db::DbPool;
 use crate::error::{AppError, AppResult};
+use crate::aca::AcaTables;
+use crate::models::aca::load_aca_tables;
 use crate::models::tax::load_tax_tables;
 use crate::models::{
     Account, Assumptions, IncomeSource, LifeEvent, Profile, ProjectionResponse, SpendingItem,
-    DEFAULT_HEALTHCARE_INFLATION_RATE, DEFAULT_INFLATION_RATE, DEFAULT_INVESTMENT_RETURN_RATE,
-    DEFAULT_ROTH_CONVERSION_CEILING, DEFAULT_SOCIAL_SECURITY_COLA_RATE,
-    DEFAULT_WITHDRAWAL_STRATEGY,
+    DEFAULT_ACA_BENCHMARK_ANNUAL_PREMIUM, DEFAULT_HEALTHCARE_INFLATION_RATE, DEFAULT_INFLATION_RATE,
+    DEFAULT_INVESTMENT_RETURN_RATE, DEFAULT_ROTH_CONVERSION_CEILING,
+    DEFAULT_SOCIAL_SECURITY_COLA_RATE, DEFAULT_WITHDRAWAL_STRATEGY,
 };
 use crate::projection::{run_projection, ProjectionInputs};
 use crate::schema::{accounts, assumptions, income_sources, life_events, profiles, spending_items};
@@ -25,6 +27,7 @@ struct PlanningData {
     life_events: Vec<LifeEvent>,
     assumptions: Option<Assumptions>,
     tax_tables: TaxTables,
+    aca_tables: AcaTables,
 }
 
 /// Load a user's planning data and run the projection engine. Shared by the
@@ -61,6 +64,7 @@ pub(crate) async fn build_projection(pool: &DbPool, user_id: String) -> AppResul
                 .first(&mut conn)
                 .optional()?,
             tax_tables: load_tax_tables(&mut conn)?,
+            aca_tables: load_aca_tables(&mut conn)?,
         })
     })
     .await
@@ -84,6 +88,7 @@ pub(crate) async fn build_projection(pool: &DbPool, user_id: String) -> AppResul
         roth_conversion_start_year,
         roth_conversion_end_year,
         withdrawal_strategy,
+        aca_benchmark_annual_premium,
     ) = match &data.assumptions {
         Some(a) => (
             a.inflation_rate,
@@ -94,6 +99,7 @@ pub(crate) async fn build_projection(pool: &DbPool, user_id: String) -> AppResul
             a.roth_conversion_start_year,
             a.roth_conversion_end_year,
             a.withdrawal_strategy.clone(),
+            a.aca_benchmark_annual_premium,
         ),
         None => (
             DEFAULT_INFLATION_RATE,
@@ -104,6 +110,7 @@ pub(crate) async fn build_projection(pool: &DbPool, user_id: String) -> AppResul
             None,
             None,
             DEFAULT_WITHDRAWAL_STRATEGY.to_string(),
+            DEFAULT_ACA_BENCHMARK_ANNUAL_PREMIUM,
         ),
     };
 
@@ -123,7 +130,9 @@ pub(crate) async fn build_projection(pool: &DbPool, user_id: String) -> AppResul
         roth_conversion_start_year,
         roth_conversion_end_year,
         withdrawal_strategy,
+        aca_benchmark_annual_premium,
         tax_tables: data.tax_tables,
+        aca_tables: data.aca_tables,
     };
 
     Ok(run_projection(&inputs))

@@ -22,6 +22,23 @@ diesel::table! {
 }
 
 diesel::table! {
+    aca_applicable_percentages (id) {
+        id -> Text,
+        fpl_percent -> Double,
+        applicable_percentage -> Double,
+    }
+}
+
+diesel::table! {
+    aca_fpl_guidelines (id) {
+        id -> Text,
+        base_year -> Integer,
+        household_size -> Integer,
+        annual_amount -> Double,
+    }
+}
+
+diesel::table! {
     assumptions (id) {
         id -> Text,
         user_id -> Text,
@@ -34,6 +51,7 @@ diesel::table! {
         roth_conversion_ceiling -> Double,
         roth_conversion_start_year -> Nullable<Integer>,
         roth_conversion_end_year -> Nullable<Integer>,
+        aca_benchmark_annual_premium -> Double,
         withdrawal_strategy -> Text,
     }
 }
@@ -189,6 +207,8 @@ diesel::joinable!(profiles -> users (user_id));
 diesel::joinable!(spending_items -> users (user_id));
 
 diesel::allow_tables_to_appear_in_same_query!(
+    aca_applicable_percentages,
+    aca_fpl_guidelines,
     accounts,
     assumptions,
     income_sources,

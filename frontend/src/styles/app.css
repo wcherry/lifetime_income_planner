@@ -631,6 +631,12 @@ form {
   font-weight: 700;
 }
 
+/* ACA subsidy buildup (single column, capped width for readability). */
+.aca-lines {
+  margin-top: 1rem;
+  max-width: 32rem;
+}
+
 .tax-hint {
   font-size: 0.78rem;
 }

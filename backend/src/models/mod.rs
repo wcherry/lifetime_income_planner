@@ -1,3 +1,4 @@
+pub mod aca;
 pub mod account;
 pub mod assumptions;
 pub mod income;
@@ -9,6 +10,7 @@ pub mod spending;
 pub mod tax;
 pub mod user;
 
+pub use aca::*;
 pub use account::*;
 pub use assumptions::*;
 pub use income::*;
