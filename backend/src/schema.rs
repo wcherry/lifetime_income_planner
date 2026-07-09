@@ -1,6 +1,23 @@
 // @generated automatically by Diesel CLI.
 
 diesel::table! {
+    aca_applicable_percentages (id) {
+        id -> Text,
+        fpl_percent -> Double,
+        applicable_percentage -> Double,
+    }
+}
+
+diesel::table! {
+    aca_fpl_guidelines (id) {
+        id -> Text,
+        base_year -> Integer,
+        household_size -> Integer,
+        annual_amount -> Double,
+    }
+}
+
+diesel::table! {
     accounts (id) {
         id -> Text,
         user_id -> Text,
@@ -18,23 +35,6 @@ diesel::table! {
         withdrawal_restrictions -> Nullable<Text>,
         created_at -> Timestamp,
         updated_at -> Timestamp,
-    }
-}
-
-diesel::table! {
-    aca_applicable_percentages (id) {
-        id -> Text,
-        fpl_percent -> Double,
-        applicable_percentage -> Double,
-    }
-}
-
-diesel::table! {
-    aca_fpl_guidelines (id) {
-        id -> Text,
-        base_year -> Integer,
-        household_size -> Integer,
-        annual_amount -> Double,
     }
 }
 
@@ -74,6 +74,17 @@ diesel::table! {
         notes -> Nullable<Text>,
         created_at -> Timestamp,
         updated_at -> Timestamp,
+    }
+}
+
+diesel::table! {
+    irmaa_brackets (id) {
+        id -> Text,
+        base_year -> Integer,
+        filing_group -> Text,
+        magi_threshold -> Double,
+        part_b_surcharge_monthly -> Double,
+        part_d_surcharge_monthly -> Double,
     }
 }
 
@@ -129,6 +140,23 @@ diesel::table! {
 }
 
 diesel::table! {
+    spending_items (id) {
+        id -> Text,
+        user_id -> Text,
+        name -> Text,
+        category -> Text,
+        amount -> Double,
+        frequency -> Text,
+        inflation_adjusted -> Bool,
+        start_year -> Nullable<Integer>,
+        end_year -> Nullable<Integer>,
+        notes -> Nullable<Text>,
+        created_at -> Timestamp,
+        updated_at -> Timestamp,
+    }
+}
+
+diesel::table! {
     state_tax_brackets (id) {
         id -> Text,
         state -> Text,
@@ -173,23 +201,6 @@ diesel::table! {
 }
 
 diesel::table! {
-    spending_items (id) {
-        id -> Text,
-        user_id -> Text,
-        name -> Text,
-        category -> Text,
-        amount -> Double,
-        frequency -> Text,
-        inflation_adjusted -> Bool,
-        start_year -> Nullable<Integer>,
-        end_year -> Nullable<Integer>,
-        notes -> Nullable<Text>,
-        created_at -> Timestamp,
-        updated_at -> Timestamp,
-    }
-}
-
-diesel::table! {
     users (id) {
         id -> Text,
         email -> Text,
@@ -213,6 +224,7 @@ diesel::allow_tables_to_appear_in_same_query!(
     accounts,
     assumptions,
     income_sources,
+    irmaa_brackets,
     life_events,
     plans,
     profiles,

@@ -6,12 +6,14 @@ the full product vision and phased roadmap.
 
 ## Status
 
-**Phase 3 (Healthcare & Regulatory Intelligence) in progress — features 1, 2, 3,
-and 5 complete.** A pure, unit-tested ACA engine (`backend/src/aca.rs`) computes
+**Phase 3 (Healthcare & Regulatory Intelligence) in progress — features 1–5
+complete.** A pure, unit-tested ACA engine (`backend/src/aca.rs`) computes
 the Affordable Care Act premium tax credit for each pre-Medicare projection
 year, MAGI is tracked as a first-class figure every year, Medicare Part B
-premiums and enrollment milestones are modeled automatically from age 65, and
-the projection engine enforces required minimum distributions:
+premiums and enrollment milestones are modeled automatically from age 65, a
+Medicare IRMAA engine (`backend/src/irmaa.rs`) layers the income-based
+surcharge on top, and the projection engine enforces required minimum
+distributions:
 
 1. **ACA subsidy calculations** — the household's Modified AGI is measured
    against the Federal Poverty Line for its size; where it lands on the FPL
@@ -57,7 +59,36 @@ indexed across the horizon.
    to exclude it (e.g. a spouse's employer plan covers it instead). The Plan
    page shows a lifetime Part B tile and a per-year column once it applies.
    This is the base premium only — the income-based IRMAA surcharge on top of
-   it is a later phase (feature 4).
+   it is modeled next (feature 4).
+
+4. **Medicare IRMAA forecasting** — the Income-Related Monthly Adjustment
+   Amount is a surcharge on top of the standard Part B and Part D premiums for
+   higher-income households, based on MAGI from the tax return filed *two
+   years earlier*. The engine applies that same lookback: each year's
+   surcharge is determined from the household's own MAGI two projection-years
+   prior (already settled earlier in the same run), against one of three CMS
+   bracket schedules — single/head-of-household/qualifying-widow(er), married
+   filing jointly (roughly double the single thresholds), and the narrower
+   married-filing-separately schedule. Both Part B and Part D surcharges are
+   fixed federal dollar amounts (unlike the base premiums, which vary by plan
+   choice), so both are modeled directly without needing a Part D premium
+   input. The surcharge is charged per Medicare-enrolled household member —
+   a couple's tier is set by their *combined* MAGI, but each enrolled spouse
+   pays the tier's surcharge individually. For the plan's first two years
+   there's no in-plan MAGI history yet to look back on, so no surcharge is
+   assumed rather than guessed at. It rides on the existing Part B toggle
+   (feature 3) — no separate assumption to configure — and, like the ACA and
+   Part B premium modeling, is a planning approximation: by statute only the
+   lower brackets are inflation-indexed and the top bracket is frozen through
+   2027, while this engine indexes all thresholds uniformly for simplicity.
+   The Plan page shows a lifetime IRMAA tile, a per-year column once it
+   applies, and a current-year card with the lookback MAGI, tier, and
+   per-person breakdown.
+
+The IRMAA bracket thresholds and surcharge amounts live in a dedicated
+database table (`irmaa_brackets`), seeded at startup from the app's built-in
+2025 CMS figures — the same admin-maintainable pattern as the tax and ACA
+tables.
 
 5. **Required Minimum Distribution (RMD) calculations** — each owner's annual
    RMD is computed from their prior year-end tax-deferred balance divided by
@@ -69,8 +100,8 @@ indexed across the horizon.
    flags any year where the RMD exceeds that year's spending need with a
    warning icon in the year-by-year table.
 
-Still to come in Phase 3: Medicare IRMAA forecasting, Roth conversion timing
-around IRMAA/RMDs, and regulatory alerts (features 4, 6–7).
+Still to come in Phase 3: Roth conversion timing around IRMAA/RMDs and
+regulatory alerts (features 6–7).
 
 **Phase 2 (Tax Optimization) complete — all 9 features.** The
 projection engine is now tax-aware. A pure, unit-tested tax engine

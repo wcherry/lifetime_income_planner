@@ -281,6 +281,7 @@ export interface ProjectionSummary {
   total_lifetime_roth_conversions: number;
   total_lifetime_aca_subsidies: number;
   total_lifetime_medicare_premiums: number;
+  total_lifetime_irmaa_surcharges: number;
   depletion_year: number | null;
 }
 
@@ -295,6 +296,22 @@ export interface YearAca {
   expected_contribution: number;
   benchmark_premium: number;
   subsidy: number;
+}
+
+export interface YearIrmaa {
+  applies: boolean;
+  /** Whether two-years-prior MAGI was available; false for the plan's first two years. */
+  has_lookback_data: boolean;
+  lookback_year: number;
+  lookback_magi: number;
+  /** This tier's Part B surcharge, per enrolled person, per month. */
+  part_b_surcharge_monthly: number;
+  /** This tier's Part D surcharge, per enrolled person, per month. */
+  part_d_surcharge_monthly: number;
+  /** Number of household members enrolled (65+) and paying the surcharge this year. */
+  enrolled_count: number;
+  /** Household total surcharge for the year (Part B + Part D, both enrolled members). */
+  total_surcharge: number;
 }
 
 export interface YearTax {
@@ -352,6 +369,8 @@ export interface YearProjection {
   rmd_amount: number;
   /** Medicare Part B premiums due this year, per enrolled household member (65+); 0 if disabled. */
   medicare_premiums: number;
+  /** Medicare IRMAA surcharge due this year, based on household MAGI from two years prior; 0 before it applies. */
+  irmaa_surcharge: number;
   contributions: number;
   roth_conversion: number;
   taxes: number;
@@ -359,6 +378,7 @@ export interface YearProjection {
   /** Which category was drawn from first this year (feature 9): "taxable_first" or "tax_deferred_first". */
   withdrawal_order: string;
   aca: YearAca;
+  irmaa: YearIrmaa;
   ending_balance: number;
   shortfall: number;
 }

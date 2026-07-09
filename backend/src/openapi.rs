@@ -83,6 +83,7 @@ use crate::models;
         models::YearProjection,
         models::YearTax,
         models::YearAca,
+        models::YearIrmaa,
         models::LifeEventOccurrence,
         models::Milestone,
         models::QuarterProjection,

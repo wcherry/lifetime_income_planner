@@ -13,6 +13,7 @@ import type {
   Projection,
   ProjectionSummary,
   YearAca,
+  YearIrmaa,
   YearProjection,
   YearTax,
 } from "../api/types";
@@ -29,6 +30,7 @@ const baseSummary: ProjectionSummary = {
   total_lifetime_roth_conversions: 0,
   total_lifetime_aca_subsidies: 0,
   total_lifetime_medicare_premiums: 0,
+  total_lifetime_irmaa_surcharges: 0,
   depletion_year: null,
 };
 
@@ -41,6 +43,17 @@ const emptyAca: YearAca = {
   expected_contribution: 0,
   benchmark_premium: 0,
   subsidy: 0,
+};
+
+const emptyIrmaa: YearIrmaa = {
+  applies: false,
+  has_lookback_data: false,
+  lookback_year: 0,
+  lookback_magi: 0,
+  part_b_surcharge_monthly: 0,
+  part_d_surcharge_monthly: 0,
+  enrolled_count: 0,
+  total_surcharge: 0,
 };
 
 const emptyTax: YearTax = {
@@ -81,12 +94,14 @@ function year(overrides: Partial<YearProjection>): YearProjection {
     withdrawals: 0,
     rmd_amount: 0,
     medicare_premiums: 0,
+    irmaa_surcharge: 0,
     contributions: 0,
     roth_conversion: 0,
     taxes: 0,
     tax: emptyTax,
     withdrawal_order: "taxable_first",
     aca: emptyAca,
+    irmaa: emptyIrmaa,
     ending_balance: 0,
     shortfall: 0,
     ...overrides,

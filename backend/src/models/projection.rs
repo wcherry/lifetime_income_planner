@@ -49,6 +49,9 @@ pub struct ProjectionSummary {
     pub total_lifetime_aca_subsidies: f64,
     /// Total Medicare Part B premiums paid over the plan (Phase 3, feature 3).
     pub total_lifetime_medicare_premiums: f64,
+    /// Total Medicare IRMAA surcharges (Part B + Part D) paid over the plan
+    /// (Phase 3, feature 4).
+    pub total_lifetime_irmaa_surcharges: f64,
     /// First year in which spending could not be fully funded, if any.
     pub depletion_year: Option<i32>,
 }
@@ -125,6 +128,32 @@ pub struct YearAca {
     pub subsidy: f64,
 }
 
+/// One year's Medicare IRMAA surcharge detail (roadmap Phase 3, feature 4).
+/// All dollar amounts are annual, household totals unless noted otherwise.
+#[derive(Debug, Clone, Serialize, ToSchema, Default)]
+pub struct YearIrmaa {
+    /// Whether any household member enrolled in Medicare this year pays a
+    /// surcharge (MAGI from the lookback year was at/above the lowest tier).
+    pub applies: bool,
+    /// Whether two-years-prior MAGI was available (from earlier in this same
+    /// projection) to determine the tier. `false` for the first two years of
+    /// the plan, when no in-plan history exists yet — treated as no surcharge
+    /// rather than guessed at, since actual pre-plan MAGI isn't modeled.
+    pub has_lookback_data: bool,
+    /// Calendar year the lookback MAGI is drawn from (`year - 2`).
+    pub lookback_year: i32,
+    /// The MAGI the tier was determined from (0 when lookback data wasn't available).
+    pub lookback_magi: f64,
+    /// This tier's Part B surcharge, per enrolled person, per month.
+    pub part_b_surcharge_monthly: f64,
+    /// This tier's Part D surcharge, per enrolled person, per month.
+    pub part_d_surcharge_monthly: f64,
+    /// Number of household members enrolled (age 65+) and paying the surcharge this year.
+    pub enrolled_count: i32,
+    /// Household total surcharge for the year (Part B + Part D, both enrolled members).
+    pub total_surcharge: f64,
+}
+
 /// A single life event occurring within a projection year.
 #[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct LifeEventOccurrence {
@@ -176,9 +205,16 @@ pub struct YearProjection {
     /// the standard premium per household member enrolled (age 65+),
     /// inflation-indexed by the healthcare inflation rate. 0 before either
     /// person turns 65 or when Medicare modeling is disabled. Treated as an
-    /// automatic cash need alongside spending, ahead of any future IRMAA
-    /// income-based surcharge.
+    /// automatic cash need alongside spending, ahead of any IRMAA income-based
+    /// surcharge (`irmaa_surcharge`).
     pub medicare_premiums: f64,
+    /// Medicare IRMAA surcharge due this year (roadmap Phase 3, feature 4):
+    /// the income-based add-on to the standard Part B and Part D premiums,
+    /// based on household MAGI from two years prior. 0 before Medicare
+    /// modeling applies, while lookback history is unavailable, or when MAGI
+    /// stays under the lowest bracket. Treated as an automatic cash need
+    /// alongside `medicare_premiums`; see `irmaa` for the full breakdown.
+    pub irmaa_surcharge: f64,
     /// Surplus cash reinvested into accounts.
     pub contributions: f64,
     /// Dollars converted from tax-deferred to Roth this year (feature 6). The
@@ -197,6 +233,8 @@ pub struct YearProjection {
     /// ACA premium tax credit detail for the year (Phase 3, feature 1). The
     /// subsidy is a tax-free cash inflow that reduces the year's withdrawal need.
     pub aca: YearAca,
+    /// Medicare IRMAA surcharge detail for the year (Phase 3, feature 4).
+    pub irmaa: YearIrmaa,
     /// Total account balance at the end of the year.
     pub ending_balance: f64,
     /// Spending (or taxes) that could not be funded because accounts were exhausted.

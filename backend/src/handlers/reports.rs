@@ -48,12 +48,12 @@ fn render_tax_summary_csv(projection: &ProjectionResponse) -> String {
          Social Security Benefits,Taxable Social Security,Adjusted Gross Income,MAGI,\
          Standard Deduction,Taxable Income,Federal Ordinary Tax,Federal Capital Gains Tax,\
          Federal Tax,State Taxable Income,State Tax,Total Tax,Effective Rate,Marginal Rate,\
-         Roth Conversion,Medicare Premiums\n",
+         Roth Conversion,Medicare Premiums,IRMAA Surcharge\n",
     );
     for y in &projection.annual {
         let t = &y.tax;
         out.push_str(&format!(
-            "{},{},{},{:.2},{:.2},{:.2},{:.2},{:.2},{:.2},{:.2},{:.2},{:.2},{:.2},{:.2},{:.2},{:.2},{:.2},{:.2},{:.4},{:.4},{:.2},{:.2}\n",
+            "{},{},{},{:.2},{:.2},{:.2},{:.2},{:.2},{:.2},{:.2},{:.2},{:.2},{:.2},{:.2},{:.2},{:.2},{:.2},{:.2},{:.4},{:.4},{:.2},{:.2},{:.2}\n",
             y.year,
             y.primary_age,
             y.withdrawal_order,
@@ -76,6 +76,7 @@ fn render_tax_summary_csv(projection: &ProjectionResponse) -> String {
             t.marginal_rate,
             y.roth_conversion,
             y.medicare_premiums,
+            y.irmaa_surcharge,
         ));
     }
     out
@@ -85,7 +86,7 @@ fn render_tax_summary_csv(projection: &ProjectionResponse) -> String {
 mod tests {
     use super::*;
     use crate::models::{
-        EstimatedTaxes, ProjectionAssumptions, ProjectionSummary, YearAca, YearTax,
+        EstimatedTaxes, ProjectionAssumptions, ProjectionSummary, YearAca, YearIrmaa, YearTax,
     };
 
     fn sample_year(year: i32, ordinary_income: f64, total_tax: f64) -> crate::models::YearProjection {
@@ -103,6 +104,7 @@ mod tests {
             withdrawals: 0.0,
             rmd_amount: 0.0,
             medicare_premiums: 0.0,
+            irmaa_surcharge: 0.0,
             contributions: 0.0,
             roth_conversion: 0.0,
             taxes: total_tax,
@@ -134,6 +136,7 @@ mod tests {
             },
             withdrawal_order: "taxable_first".to_string(),
             aca: YearAca::default(),
+            irmaa: YearIrmaa::default(),
             ending_balance: 0.0,
             shortfall: 0.0,
         }
@@ -169,6 +172,7 @@ mod tests {
                 total_lifetime_roth_conversions: 0.0,
                 total_lifetime_aca_subsidies: 0.0,
                 total_lifetime_medicare_premiums: 0.0,
+                total_lifetime_irmaa_surcharges: 0.0,
                 depletion_year: None,
             },
             annual: vec![

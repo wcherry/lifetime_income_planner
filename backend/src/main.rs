@@ -4,6 +4,7 @@ mod config;
 mod db;
 mod error;
 mod handlers;
+mod irmaa;
 mod models;
 mod openapi;
 mod projection;

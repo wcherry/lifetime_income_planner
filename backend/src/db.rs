@@ -29,6 +29,7 @@ pub fn seed_reference_data(pool: &DbPool) {
     let mut conn = pool.get().expect("Failed to get connection for seeding");
     crate::models::seed_tax_tables_if_empty(&mut conn).expect("Failed to seed tax tables");
     crate::models::seed_aca_tables_if_empty(&mut conn).expect("Failed to seed ACA tables");
+    crate::models::seed_irmaa_brackets_if_empty(&mut conn).expect("Failed to seed IRMAA brackets");
 }
 
 #[derive(Debug)]

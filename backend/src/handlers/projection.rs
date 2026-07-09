@@ -6,7 +6,9 @@ use crate::auth::AuthUser;
 use crate::db::DbPool;
 use crate::error::{AppError, AppResult};
 use crate::aca::AcaTables;
+use crate::irmaa::IrmaaTables;
 use crate::models::aca::load_aca_tables;
+use crate::models::irmaa::load_irmaa_tables;
 use crate::models::tax::load_tax_tables;
 use crate::models::{
     Account, Assumptions, IncomeSource, LifeEvent, Profile, ProjectionResponse, SpendingItem,
@@ -28,6 +30,7 @@ struct PlanningData {
     assumptions: Option<Assumptions>,
     tax_tables: TaxTables,
     aca_tables: AcaTables,
+    irmaa_tables: IrmaaTables,
 }
 
 /// Load a user's planning data and run the projection engine. Shared by the
@@ -65,6 +68,7 @@ pub(crate) async fn build_projection(pool: &DbPool, user_id: String) -> AppResul
                 .optional()?,
             tax_tables: load_tax_tables(&mut conn)?,
             aca_tables: load_aca_tables(&mut conn)?,
+            irmaa_tables: load_irmaa_tables(&mut conn)?,
         })
     })
     .await
@@ -137,6 +141,7 @@ pub(crate) async fn build_projection(pool: &DbPool, user_id: String) -> AppResul
         medicare_part_b_annual_premium,
         tax_tables: data.tax_tables,
         aca_tables: data.aca_tables,
+        irmaa_tables: data.irmaa_tables,
     };
 
     Ok(run_projection(&inputs))

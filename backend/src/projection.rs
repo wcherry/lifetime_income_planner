@@ -15,10 +15,11 @@ use std::collections::HashMap;
 use chrono::{Datelike, Months, NaiveDate};
 
 use crate::aca::{compute_subsidy, AcaInput, AcaResult, AcaTables};
+use crate::irmaa::{compute_irmaa, IrmaaFilingGroup, IrmaaInput, IrmaaTables};
 use crate::models::{
     Account, EstimatedTaxPayment, EstimatedTaxes, IncomeSource, LifeEvent, LifeEventOccurrence,
     Milestone, Profile, ProjectionAssumptions, ProjectionResponse, ProjectionSummary,
-    QuarterProjection, QuarterWithdrawal, SpendingItem, YearAca, YearProjection, YearTax,
+    QuarterProjection, QuarterWithdrawal, SpendingItem, YearAca, YearIrmaa, YearProjection, YearTax,
 };
 use crate::tax::{compute_taxes, FilingStatusKind, TaxInput, TaxResult, TaxTables};
 
@@ -59,6 +60,9 @@ pub struct ProjectionInputs<'a> {
     pub tax_tables: TaxTables,
     /// Reference ACA parameters (FPL guidelines, applicable-percentage curve).
     pub aca_tables: AcaTables,
+    /// Reference Medicare IRMAA parameters (bracket thresholds and surcharges
+    /// by filing status, Phase 3 feature 4).
+    pub irmaa_tables: IrmaaTables,
 }
 
 /// Withdrawal sequencing strategy (Phase 2, feature 9), parsed from the stored
@@ -539,6 +543,7 @@ pub fn run_projection(inp: &ProjectionInputs) -> ProjectionResponse {
     let mut total_roth_conversions = 0.0;
     let mut total_aca_subsidies = 0.0;
     let mut total_medicare_premiums = 0.0;
+    let mut total_irmaa_surcharges = 0.0;
     let mut depletion_year: Option<i32> = None;
 
     for year in start_year..=end_year {
@@ -643,9 +648,43 @@ pub fn run_projection(inp: &ProjectionInputs) -> ProjectionResponse {
             spouse_birth_year,
         );
 
+        // ---- Medicare IRMAA surcharge (Phase 3, feature 4) -----------------
+        // Based on household MAGI from two years prior — the actual CMS
+        // lookback — which is already settled in `annual` from earlier
+        // iterations of this same projection. Only meaningful once Medicare
+        // cost modeling itself is enabled (a Part B premium is configured);
+        // `annual.len()` equals the number of years already completed, so the
+        // year-2 entry sits two slots back.
+        let irmaa_lookback_magi: Option<f64> = if inp.medicare_part_b_annual_premium > 0.0
+            && annual.len() >= 2
+        {
+            Some(annual[annual.len() - 2].tax.magi)
+        } else {
+            None
+        };
+        let irmaa = compute_irmaa(
+            &IrmaaInput {
+                year,
+                inflation_rate: inp.inflation_rate,
+                lookback_magi: irmaa_lookback_magi,
+                filing_group: IrmaaFilingGroup::from_filing_status(filing_status),
+            },
+            &inp.irmaa_tables,
+        );
+        let irmaa_enrolled_count = (year - birth_year >= 65) as i32
+            + spouse_birth_year.map_or(0, |sby| (year - sby >= 65) as i32);
+        let irmaa_surcharge = if irmaa.applies {
+            irmaa_enrolled_count as f64
+                * (irmaa.part_b_surcharge_monthly + irmaa.part_d_surcharge_monthly)
+                * 12.0
+        } else {
+            0.0
+        };
+
         // Cash available before tax and account draws (income + events −
-        // spending − Medicare premiums).
-        let base_cash = income + life_events_net - spending - medicare_premiums;
+        // spending − Medicare premiums − IRMAA surcharge).
+        let base_cash =
+            income + life_events_net - spending - medicare_premiums - irmaa_surcharge;
         let seniors = seniors_65_plus(inp.profile, filing_status, year);
 
         // ---- Roth conversion (feature 6) ----------------------------------
@@ -851,6 +890,7 @@ pub fn run_projection(inp: &ProjectionInputs) -> ProjectionResponse {
         total_roth_conversions += roth_conversion;
         total_aca_subsidies += subsidy;
         total_medicare_premiums += medicare_premiums;
+        total_irmaa_surcharges += irmaa_surcharge;
         if year == start_year {
             first_year_tax = tax.total_tax;
         }
@@ -873,6 +913,7 @@ pub fn run_projection(inp: &ProjectionInputs) -> ProjectionResponse {
             withdrawals: round2(withdrawals),
             rmd_amount: round2(rmd_amount),
             medicare_premiums: round2(medicare_premiums),
+            irmaa_surcharge: round2(irmaa_surcharge),
             contributions: round2(contributions),
             roth_conversion: round2(roth_conversion),
             taxes: round2(tax.total_tax),
@@ -908,6 +949,16 @@ pub fn run_projection(inp: &ProjectionInputs) -> ProjectionResponse {
                 expected_contribution: round2(aca.expected_contribution),
                 benchmark_premium: round2(aca.benchmark_premium),
                 subsidy: round2(subsidy),
+            },
+            irmaa: YearIrmaa {
+                applies: irmaa.applies,
+                has_lookback_data: irmaa.has_lookback_data,
+                lookback_year: year - 2,
+                lookback_magi: round2(irmaa.lookback_magi),
+                part_b_surcharge_monthly: irmaa.part_b_surcharge_monthly,
+                part_d_surcharge_monthly: irmaa.part_d_surcharge_monthly,
+                enrolled_count: irmaa_enrolled_count,
+                total_surcharge: round2(irmaa_surcharge),
             },
             ending_balance: round2(ending_balance),
             shortfall: round2(shortfall),
@@ -954,6 +1005,7 @@ pub fn run_projection(inp: &ProjectionInputs) -> ProjectionResponse {
             total_lifetime_roth_conversions: round2(total_roth_conversions),
             total_lifetime_aca_subsidies: round2(total_aca_subsidies),
             total_lifetime_medicare_premiums: round2(total_medicare_premiums),
+            total_lifetime_irmaa_surcharges: round2(total_irmaa_surcharges),
             depletion_year,
         },
         annual,
@@ -1482,6 +1534,7 @@ mod tests {
             medicare_part_b_annual_premium: 0.0,
             tax_tables: TaxTables::default_2025(),
             aca_tables: crate::aca::AcaTables::default_2025(),
+            irmaa_tables: IrmaaTables::default_2025(),
         }
     }
 
@@ -2283,5 +2336,105 @@ mod tests {
         assert!(labels(2030).contains(&"Medicare enrollment window opens".to_string()));
         assert!(labels(2030).contains(&"Medicare eligibility".to_string()));
         assert!(labels(2030).contains(&"Medicare enrollment window closes".to_string()));
+    }
+
+    // ---- Phase 3, feature 4: Medicare IRMAA surcharge -----------------------
+
+    /// A single filer already well past 65 with a flat, high taxable pension —
+    /// comfortably inside the second single IRMAA tier ($133k–$167k) every year.
+    fn high_income_medicare_inputs<'a>(
+        p: &'a Profile,
+        inc: &'a [IncomeSource],
+    ) -> ProjectionInputs<'a> {
+        let mut inputs = base_inputs(p, &[], inc, &[], &[]);
+        inputs.medicare_part_b_annual_premium = 2_220.0;
+        inputs
+    }
+
+    #[test]
+    fn irmaa_has_no_surcharge_for_the_first_two_years_without_lookback_history() {
+        let p = profile(1955, 2030 - 1955); // already 71 in 2026
+        let inc = [income("pension", 150_000.0, "annual", date(2020, 1, 1), false, 0.0)];
+        let out = run_projection(&high_income_medicare_inputs(&p, &inc));
+        let y2026 = out.annual.iter().find(|r| r.year == 2026).unwrap();
+        let y2027 = out.annual.iter().find(|r| r.year == 2027).unwrap();
+        assert!(!y2026.irmaa.has_lookback_data);
+        assert!(!y2026.irmaa.applies);
+        assert_eq!(y2026.irmaa_surcharge, 0.0);
+        assert!(!y2027.irmaa.has_lookback_data);
+        assert_eq!(y2027.irmaa_surcharge, 0.0);
+    }
+
+    #[test]
+    fn irmaa_applies_once_two_years_of_in_plan_history_exist() {
+        let p = profile(1955, 2030 - 1955);
+        let inc = [income("pension", 150_000.0, "annual", date(2020, 1, 1), false, 0.0)];
+        let out = run_projection(&high_income_medicare_inputs(&p, &inc));
+        let y2026 = out.annual.iter().find(|r| r.year == 2026).unwrap();
+        let y2028 = out.annual.iter().find(|r| r.year == 2028).unwrap();
+        assert!(y2028.irmaa.has_lookback_data);
+        assert_eq!(y2028.irmaa.lookback_year, 2026);
+        assert!((y2028.irmaa.lookback_magi - y2026.tax.magi).abs() < 1.0);
+        assert!(y2028.irmaa.applies);
+        // $150k sits in the second single tier ($133k-$167k): $185.00 Part B +
+        // $35.30 Part D, one enrolled person, annualized.
+        assert_eq!(y2028.irmaa.part_b_surcharge_monthly, 185.00);
+        assert_eq!(y2028.irmaa.part_d_surcharge_monthly, 35.30);
+        assert_eq!(y2028.irmaa.enrolled_count, 1);
+        assert!((y2028.irmaa_surcharge - 2_643.60).abs() < 1.0);
+        // The plan runs through 2030 with the same steady-state high MAGI, so
+        // 2028, 2029, and 2030 all carry the surcharge once lookback data exists.
+        assert!((out.summary.total_lifetime_irmaa_surcharges - 3.0 * y2028.irmaa_surcharge).abs() < 1.0);
+    }
+
+    #[test]
+    fn irmaa_is_disabled_when_medicare_part_b_is_disabled() {
+        let p = profile(1955, 2030 - 1955);
+        let inc = [income("pension", 150_000.0, "annual", date(2020, 1, 1), false, 0.0)];
+        let mut inputs = base_inputs(&p, &[], &inc, &[], &[]);
+        inputs.medicare_part_b_annual_premium = 0.0; // Medicare modeling off
+        let out = run_projection(&inputs);
+        let y2028 = out.annual.iter().find(|r| r.year == 2028).unwrap();
+        assert!(!y2028.irmaa.has_lookback_data);
+        assert!(!y2028.irmaa.applies);
+        assert_eq!(y2028.irmaa_surcharge, 0.0);
+    }
+
+    #[test]
+    fn irmaa_surcharge_is_charged_per_enrolled_spouse() {
+        // Both spouses are 65+ from year one and share the same high MAGI, so
+        // once lookback data exists both pay the per-person surcharge.
+        let mut p = profile(1955, 2030 - 1955);
+        p.marital_status = "married".into();
+        p.filing_status = "married_filing_jointly".into();
+        p.spouse_date_of_birth = Some(date(1955, 6, 1));
+        p.spouse_life_expectancy = Some(75);
+        let inc = [income("pension", 250_000.0, "annual", date(2020, 1, 1), false, 0.0)];
+        let out = run_projection(&high_income_medicare_inputs(&p, &inc));
+        let y2028 = out.annual.iter().find(|r| r.year == 2028).unwrap();
+        assert!(y2028.irmaa.applies);
+        assert_eq!(y2028.irmaa.enrolled_count, 2);
+        let per_person_monthly =
+            y2028.irmaa.part_b_surcharge_monthly + y2028.irmaa.part_d_surcharge_monthly;
+        assert!((y2028.irmaa_surcharge - 2.0 * per_person_monthly * 12.0).abs() < 1.0);
+    }
+
+    #[test]
+    fn irmaa_uses_the_wider_joint_brackets_for_married_filing_jointly() {
+        // $150k combined MAGI sits inside the single filer's second tier but
+        // is under the joint schedule's very first threshold ($212k) — a
+        // married couple with the same income as the single-filer test above
+        // should see no surcharge at all.
+        let mut p = profile(1955, 2030 - 1955);
+        p.marital_status = "married".into();
+        p.filing_status = "married_filing_jointly".into();
+        p.spouse_date_of_birth = Some(date(1955, 6, 1));
+        p.spouse_life_expectancy = Some(75);
+        let inc = [income("pension", 150_000.0, "annual", date(2020, 1, 1), false, 0.0)];
+        let out = run_projection(&high_income_medicare_inputs(&p, &inc));
+        let y2028 = out.annual.iter().find(|r| r.year == 2028).unwrap();
+        assert!(y2028.irmaa.has_lookback_data);
+        assert!(!y2028.irmaa.applies);
+        assert_eq!(y2028.irmaa_surcharge, 0.0);
     }
 }

@@ -1,6 +1,13 @@
 import { useEffect, useState } from "react";
 import { api, ApiError } from "../api/client";
-import type { EstimatedTaxes, Projection, YearAca, YearProjection, YearTax } from "../api/types";
+import type {
+  EstimatedTaxes,
+  Projection,
+  YearAca,
+  YearIrmaa,
+  YearProjection,
+  YearTax,
+} from "../api/types";
 import { Alert, Button, Card } from "../components/ui";
 import { NetWorthChart } from "../components/NetWorthChart";
 import {
@@ -81,6 +88,10 @@ export function ProjectionPage() {
   // Medicare Part B premiums (Phase 3, feature 3): only worth a dedicated
   // column once the plan actually reaches an age where they're charged.
   const showMedicare = summary.total_lifetime_medicare_premiums > 0;
+  // Medicare IRMAA surcharge (Phase 3, feature 4): only worth surfacing once
+  // the plan's MAGI actually crosses a bracket.
+  const showIrmaa = summary.total_lifetime_irmaa_surcharges > 0;
+  const currentIrmaa = annual[0]?.irmaa;
 
   async function handleDownloadTaxReport() {
     setDownloadError(null);
@@ -155,6 +166,15 @@ export function ProjectionPage() {
               {formatCurrency(summary.total_lifetime_medicare_premiums)}
             </span>
             <span className="tile-sub muted">lifetime premiums from age 65</span>
+          </div>
+        )}
+        {showIrmaa && (
+          <div className="tile">
+            <span className="tile-label">IRMAA surcharges</span>
+            <span className="tile-value">
+              {formatCurrency(summary.total_lifetime_irmaa_surcharges)}
+            </span>
+            <span className="tile-sub muted">lifetime Part B + D income surcharge</span>
           </div>
         )}
       </div>
@@ -234,6 +254,11 @@ export function ProjectionPage() {
         <AcaSubsidyCard aca={currentAca} year={projection.start_year} />
       )}
 
+      {/* Medicare IRMAA surcharge for the current year (Phase 3, feature 4) */}
+      {showIrmaa && currentIrmaa && (
+        <IrmaaCard irmaa={currentIrmaa} year={projection.start_year} />
+      )}
+
       {/* Annual projection table (Phase 1, feature 8) */}
       <Card title="Year-by-year projection" collapsible>
         <div className="table-scroll">
@@ -246,6 +271,7 @@ export function ProjectionPage() {
                 <th className="num">Income</th>
                 <th className="num">Spending</th>
                 {showMedicare && <th className="num">Medicare</th>}
+                {showIrmaa && <th className="num">IRMAA</th>}
                 <th className="num">Growth</th>
                 <th className="num">Withdrawals</th>
                 {showRoth && <th className="num">Roth conv.</th>}
@@ -270,6 +296,11 @@ export function ProjectionPage() {
                     {showMedicare && (
                       <td className="num">
                         {y.medicare_premiums > 0 ? formatCurrency(y.medicare_premiums) : "—"}
+                      </td>
+                    )}
+                    {showIrmaa && (
+                      <td className="num">
+                        {y.irmaa_surcharge > 0 ? formatCurrency(y.irmaa_surcharge) : "—"}
                       </td>
                     )}
                     <td className="num">{formatCurrency(y.growth)}</td>
@@ -630,6 +661,49 @@ function AcaSubsidyCard({ aca, year }: { aca: YearAca; year: number }) {
           <div className="tax-line tax-line-strong">
             <dt>Premium tax credit (subsidy)</dt>
             <dd>{formatCurrency(aca.subsidy)}</dd>
+          </div>
+        </dl>
+      )}
+    </Card>
+  );
+}
+
+/**
+ * Medicare IRMAA surcharge for the current year (Phase 3, feature 4): the
+ * two-year MAGI lookback, the resulting Part B/D surcharge tier, and the
+ * household total — or a note when the surcharge doesn't apply.
+ */
+function IrmaaCard({ irmaa, year }: { irmaa: YearIrmaa; year: number }) {
+  return (
+    <Card title={`Medicare IRMAA surcharge · ${year}`}>
+      <p className="muted">
+        IRMAA adds an income-based surcharge to the standard Medicare Part B and Part D premiums,
+        based on household MAGI from two years prior ({irmaa.lookback_year}) — the same lookback the
+        IRS/CMS use. It applies per enrolled household member, on top of the standard premiums shown
+        above.
+      </p>
+      {!irmaa.has_lookback_data ? (
+        <p className="muted center">
+          No surcharge assumed — {irmaa.lookback_year} falls before the start of this plan, so its
+          MAGI isn't modeled.
+        </p>
+      ) : !irmaa.applies ? (
+        <p className="muted center">
+          {irmaa.lookback_year} MAGI ({formatCurrency(irmaa.lookback_magi)}) was under the lowest
+          IRMAA threshold — the household pays only the standard premiums.
+        </p>
+      ) : (
+        <dl className="tax-lines aca-lines">
+          <TaxLine label={`MAGI in ${irmaa.lookback_year}`} value={irmaa.lookback_magi} />
+          <TaxLine label="Part B surcharge (per person/mo)" value={irmaa.part_b_surcharge_monthly} />
+          <TaxLine label="Part D surcharge (per person/mo)" value={irmaa.part_d_surcharge_monthly} />
+          <div className="tax-line">
+            <dt>Enrolled household members</dt>
+            <dd>{irmaa.enrolled_count}</dd>
+          </div>
+          <div className="tax-line tax-line-strong">
+            <dt>Total IRMAA surcharge (annual)</dt>
+            <dd>{formatCurrency(irmaa.total_surcharge)}</dd>
           </div>
         </dl>
       )}
