@@ -6,6 +6,7 @@ mod error;
 mod handlers;
 mod irmaa;
 mod models;
+mod monte_carlo;
 mod openapi;
 mod projection;
 mod schema;
@@ -77,9 +78,17 @@ async fn main() -> std::io::Result<()> {
                     .service(handlers::assumptions::get_assumptions)
                     .service(handlers::assumptions::upsert_assumptions)
                     .service(handlers::projection::get_projection)
+                    .service(handlers::projection::what_if_projection)
+                    .service(handlers::projection::optimize_projection)
+                    .service(handlers::monte_carlo::run_monte_carlo_endpoint)
                     .service(handlers::reports::get_tax_summary_csv)
                     .service(handlers::plan::list_plans)
+                    .service(handlers::plan::compare_plans)
                     .service(handlers::plan::save_plan)
+                    .service(handlers::plan::clone_plan)
+                    .service(handlers::plan::update_plan_snapshot)
+                    .service(handlers::plan::list_plan_versions)
+                    .service(handlers::plan::restore_plan_version)
                     .service(handlers::plan::rename_plan)
                     .service(handlers::plan::load_plan)
                     .service(handlers::plan::delete_plan),

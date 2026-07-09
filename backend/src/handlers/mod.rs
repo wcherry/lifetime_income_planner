@@ -4,6 +4,7 @@ pub mod auth;
 pub mod health;
 pub mod income;
 pub mod life_event;
+pub mod monte_carlo;
 pub mod plan;
 pub mod profile;
 pub mod projection;

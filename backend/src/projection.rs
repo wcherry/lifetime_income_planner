@@ -456,6 +456,26 @@ fn build_milestones(profile: &Profile, start_year: i32, end_year: i32) -> HashMa
 
 /// Run the projection. Always returns at least the current year.
 pub fn run_projection(inp: &ProjectionInputs) -> ProjectionResponse {
+    run_projection_inner(inp, None)
+}
+
+/// Run the projection with a Monte Carlo per-year investment-return shock
+/// (roadmap Phase 4, feature 6) layered on top of every account's
+/// `expected_roi`. `return_shocks[i]` (percentage points, e.g. `-8.0` for an
+/// 8-point-worse year) perturbs the year at offset `i` from `inp.current_year`;
+/// a shocks slice shorter than the plan horizon is fine — years past its end
+/// are unperturbed.
+pub fn run_projection_with_shocks(
+    inp: &ProjectionInputs,
+    return_shocks: &[f64],
+) -> ProjectionResponse {
+    run_projection_inner(inp, Some(return_shocks))
+}
+
+fn run_projection_inner(
+    inp: &ProjectionInputs,
+    return_shocks: Option<&[f64]>,
+) -> ProjectionResponse {
     let start_year = inp.current_year;
     let birth_year = inp.profile.date_of_birth.year();
     let mut end_year = birth_year + inp.profile.life_expectancy;
@@ -544,6 +564,7 @@ pub fn run_projection(inp: &ProjectionInputs) -> ProjectionResponse {
     let mut total_aca_subsidies = 0.0;
     let mut total_medicare_premiums = 0.0;
     let mut total_irmaa_surcharges = 0.0;
+    let mut total_rmd = 0.0;
     let mut depletion_year: Option<i32> = None;
 
     for year in start_year..=end_year {
@@ -625,9 +646,13 @@ pub fn run_projection(inp: &ProjectionInputs) -> ProjectionResponse {
         // the rest is unrealized appreciation.
         let mut growth = 0.0;
         let mut qualified_dividends = 0.0;
+        let shock = return_shocks
+            .and_then(|s| s.get((year - start_year) as usize))
+            .copied()
+            .unwrap_or(0.0);
         for (i, acc) in inp.accounts.iter().enumerate() {
             let start_bal = balances[i];
-            let g = start_bal * acc.expected_roi / 100.0;
+            let g = start_bal * (acc.expected_roi + shock) / 100.0;
             balances[i] += g;
             growth += g;
             if acc.category == "taxable" && acc.dividend_yield > 0.0 {
@@ -891,6 +916,7 @@ pub fn run_projection(inp: &ProjectionInputs) -> ProjectionResponse {
         total_aca_subsidies += subsidy;
         total_medicare_premiums += medicare_premiums;
         total_irmaa_surcharges += irmaa_surcharge;
+        total_rmd += rmd_amount;
         if year == start_year {
             first_year_tax = tax.total_tax;
         }
@@ -1006,6 +1032,7 @@ pub fn run_projection(inp: &ProjectionInputs) -> ProjectionResponse {
             total_lifetime_aca_subsidies: round2(total_aca_subsidies),
             total_lifetime_medicare_premiums: round2(total_medicare_premiums),
             total_lifetime_irmaa_surcharges: round2(total_irmaa_surcharges),
+            total_lifetime_rmd: round2(total_rmd),
             depletion_year,
         },
         annual,
@@ -2091,6 +2118,7 @@ mod tests {
             - y.ending_balance)
             .abs()
             < 1.0);
+        assert!((out.summary.total_lifetime_rmd - y.rmd_amount).abs() < 1.0);
     }
 
     #[test]
@@ -2436,5 +2464,37 @@ mod tests {
         assert!(y2028.irmaa.has_lookback_data);
         assert!(!y2028.irmaa.applies);
         assert_eq!(y2028.irmaa_surcharge, 0.0);
+    }
+
+    #[test]
+    fn zero_shocks_match_the_unshocked_projection() {
+        let p = profile(1960, 90);
+        let accts = [account("a1", "taxable", 100_000.0, 6.0)];
+        let inputs = base_inputs(&p, &accts, &[], &[], &[]);
+        let unshocked = run_projection(&inputs);
+        let zero_shocks = vec![0.0; unshocked.annual.len()];
+        let shocked = run_projection_with_shocks(&inputs, &zero_shocks);
+
+        assert_eq!(unshocked.annual.len(), shocked.annual.len());
+        for (a, b) in unshocked.annual.iter().zip(shocked.annual.iter()) {
+            assert_eq!(a.year, b.year);
+            assert!((a.ending_balance - b.ending_balance).abs() < 1e-9);
+        }
+    }
+
+    #[test]
+    fn a_positive_shock_in_year_zero_increases_that_years_growth() {
+        let p = profile(1960, 90);
+        let accts = [account("a1", "taxable", 100_000.0, 6.0)];
+        let inputs = base_inputs(&p, &accts, &[], &[], &[]);
+        let unshocked = run_projection(&inputs);
+        let mut shocks = vec![0.0; unshocked.annual.len()];
+        shocks[0] = 10.0; // +10 percentage points in the first projected year
+        let shocked = run_projection_with_shocks(&inputs, &shocks);
+
+        let unshocked_y0 = &unshocked.annual[0];
+        let shocked_y0 = &shocked.annual[0];
+        assert_eq!(unshocked_y0.year, shocked_y0.year);
+        assert!(shocked_y0.ending_balance > unshocked_y0.ending_balance);
     }
 }

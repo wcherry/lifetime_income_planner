@@ -11,6 +11,7 @@ import { LifeEventsPage } from "./pages/LifeEventsPage";
 import { AssumptionsPage } from "./pages/AssumptionsPage";
 import { ProjectionPage } from "./pages/ProjectionPage";
 import { PlansPage } from "./pages/PlansPage";
+import { ComparisonPage } from "./pages/ComparisonPage";
 
 function RequireAuth({ children }: { children: ReactNode }) {
   const { user, loading } = useAuth();
@@ -59,6 +60,9 @@ function Header() {
           </NavLink>
           <NavLink to="/plans" className={({ isActive }) => (isActive ? "active" : "")}>
             Saved
+          </NavLink>
+          <NavLink to="/compare" className={({ isActive }) => (isActive ? "active" : "")}>
+            Compare
           </NavLink>
         </nav>
       </div>
@@ -163,6 +167,14 @@ function Shell() {
             element={
               <RequireAuth>
                 <PlansPage />
+              </RequireAuth>
+            }
+          />
+          <Route
+            path="/compare"
+            element={
+              <RequireAuth>
+                <ComparisonPage />
               </RequireAuth>
             }
           />

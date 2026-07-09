@@ -108,6 +108,16 @@ diesel::table! {
 }
 
 diesel::table! {
+    plan_snapshots (id) {
+        id -> Text,
+        plan_id -> Text,
+        user_id -> Text,
+        snapshot -> Text,
+        created_at -> Timestamp,
+    }
+}
+
+diesel::table! {
     plans (id) {
         id -> Text,
         user_id -> Text,
@@ -115,6 +125,7 @@ diesel::table! {
         snapshot -> Text,
         created_at -> Timestamp,
         updated_at -> Timestamp,
+        parent_plan_id -> Nullable<Text>,
     }
 }
 
@@ -214,6 +225,8 @@ diesel::joinable!(accounts -> users (user_id));
 diesel::joinable!(assumptions -> users (user_id));
 diesel::joinable!(income_sources -> users (user_id));
 diesel::joinable!(life_events -> users (user_id));
+diesel::joinable!(plan_snapshots -> plans (plan_id));
+diesel::joinable!(plan_snapshots -> users (user_id));
 diesel::joinable!(plans -> users (user_id));
 diesel::joinable!(profiles -> users (user_id));
 diesel::joinable!(spending_items -> users (user_id));
@@ -226,6 +239,7 @@ diesel::allow_tables_to_appear_in_same_query!(
     income_sources,
     irmaa_brackets,
     life_events,
+    plan_snapshots,
     plans,
     profiles,
     spending_items,

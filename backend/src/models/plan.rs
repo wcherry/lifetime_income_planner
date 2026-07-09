@@ -6,9 +6,9 @@ use validator::Validate;
 
 use crate::models::{
     Account, Assumptions, IncomeSource, LifeEvent, NewAccount, NewAssumptions, NewIncomeSource,
-    NewLifeEvent, NewSpendingItem, Profile, ProfileChangeset, SpendingItem,
+    NewLifeEvent, NewSpendingItem, Profile, ProfileChangeset, ProjectionSummary, SpendingItem,
 };
-use crate::schema::plans;
+use crate::schema::{plan_snapshots, plans};
 
 /// Persisted saved-plan row. `snapshot` holds a JSON [`PlanSnapshot`].
 #[derive(Queryable, Selectable, Identifiable, Debug, Clone)]
@@ -21,6 +21,10 @@ pub struct Plan {
     pub snapshot: String,
     pub created_at: NaiveDateTime,
     pub updated_at: NaiveDateTime,
+    /// Scenario cloning and branching (roadmap Phase 4, feature 4): the plan
+    /// this one was cloned from, if any. Not a hard foreign key — a clone
+    /// survives its parent being deleted later.
+    pub parent_plan_id: Option<String>,
 }
 
 #[derive(Insertable)]
@@ -31,6 +35,32 @@ pub struct NewPlan {
     pub name: String,
     pub snapshot: String,
     pub updated_at: NaiveDateTime,
+    pub parent_plan_id: Option<String>,
+}
+
+/// A past version of a plan's data (roadmap Phase 4, feature 7). `plans.snapshot`
+/// always holds the *current* version; updating a plan's data archives the
+/// displaced snapshot here first, so a scenario accumulates a timeline as it
+/// evolves instead of silently overwriting its history.
+#[derive(Queryable, Selectable, Identifiable, Debug, Clone)]
+#[diesel(table_name = plan_snapshots)]
+#[diesel(check_for_backend(diesel::sqlite::Sqlite))]
+pub struct PlanSnapshotVersion {
+    pub id: String,
+    pub plan_id: String,
+    pub user_id: String,
+    pub snapshot: String,
+    pub created_at: NaiveDateTime,
+}
+
+#[derive(Insertable)]
+#[diesel(table_name = plan_snapshots)]
+pub struct NewPlanSnapshotVersion {
+    pub id: String,
+    pub plan_id: String,
+    pub user_id: String,
+    pub snapshot: String,
+    pub created_at: NaiveDateTime,
 }
 
 // --- Snapshot document -----------------------------------------------------
@@ -427,8 +457,17 @@ pub struct SavePlanRequest {
     pub name: String,
 }
 
+/// Request body for cloning a saved plan (roadmap Phase 4, feature 4). An
+/// omitted name defaults to "{original name} copy".
+#[derive(Debug, Deserialize, ToSchema, Validate, Default)]
+pub struct ClonePlanRequest {
+    #[validate(length(min = 1, max = 120, message = "is required"))]
+    #[schema(example = "Baseline (aggressive Roth)")]
+    pub name: Option<String>,
+}
+
 /// Count summary of what a saved plan contains.
-#[derive(Debug, Clone, Serialize, ToSchema)]
+#[derive(Debug, Clone, Default, Serialize, ToSchema)]
 pub struct PlanContents {
     pub has_profile: bool,
     pub has_assumptions: bool,
@@ -444,6 +483,9 @@ pub struct PlanResponse {
     pub id: String,
     pub name: String,
     pub contents: PlanContents,
+    /// Scenario cloning and branching (Phase 4, feature 4): the plan this one
+    /// was cloned from, if any.
+    pub parent_plan_id: Option<String>,
     #[schema(value_type = String, format = DateTime)]
     pub created_at: NaiveDateTime,
     #[schema(value_type = String, format = DateTime)]
@@ -456,22 +498,61 @@ impl PlanResponse {
     pub fn from_row(p: &Plan) -> Self {
         let contents = serde_json::from_str::<PlanSnapshot>(&p.snapshot)
             .map(|s| s.contents())
-            .unwrap_or(PlanContents {
-                has_profile: false,
-                has_assumptions: false,
-                accounts: 0,
-                income: 0,
-                spending: 0,
-                life_events: 0,
-            });
+            .unwrap_or_default();
         PlanResponse {
             id: p.id.clone(),
             name: p.name.clone(),
             contents,
+            parent_plan_id: p.parent_plan_id.clone(),
             created_at: p.created_at,
             updated_at: p.updated_at,
         }
     }
+}
+
+/// API view of one historical version of a plan (roadmap Phase 4, feature 7).
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct PlanVersionResponse {
+    pub id: String,
+    pub contents: PlanContents,
+    #[schema(value_type = String, format = DateTime)]
+    pub created_at: NaiveDateTime,
+}
+
+impl PlanVersionResponse {
+    /// Build a response, parsing the stored snapshot for its content counts.
+    /// A snapshot that fails to parse yields empty counts rather than an error.
+    pub fn from_row(v: &PlanSnapshotVersion) -> Self {
+        let contents = serde_json::from_str::<PlanSnapshot>(&v.snapshot)
+            .map(|s| s.contents())
+            .unwrap_or_default();
+        PlanVersionResponse {
+            id: v.id.clone(),
+            contents,
+            created_at: v.created_at,
+        }
+    }
+}
+
+/// Request body for comparing saved plans side by side (roadmap Phase 4,
+/// feature 2).
+#[derive(Debug, Deserialize, ToSchema, Validate)]
+pub struct CompareScenariosRequest {
+    #[validate(length(min = 2, max = 10, message = "compare between 2 and 10 scenarios at a time"))]
+    pub plan_ids: Vec<String>,
+}
+
+/// One scenario's headline figures within a comparison (roadmap Phase 4,
+/// feature 2): the same projection engine run against the plan's saved
+/// snapshot instead of the live working set.
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct ScenarioComparison {
+    pub plan_id: String,
+    pub plan_name: String,
+    pub summary: ProjectionSummary,
+    /// Age at which the plan's money runs out, if it does (derived from
+    /// `summary.depletion_year` and the scenario's birth year).
+    pub depletion_age: Option<i32>,
 }
 
 #[cfg(test)]

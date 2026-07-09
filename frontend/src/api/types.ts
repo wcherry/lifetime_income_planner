@@ -282,6 +282,7 @@ export interface ProjectionSummary {
   total_lifetime_aca_subsidies: number;
   total_lifetime_medicare_premiums: number;
   total_lifetime_irmaa_surcharges: number;
+  total_lifetime_rmd: number;
   depletion_year: number | null;
 }
 
@@ -427,6 +428,35 @@ export interface Projection {
   estimated_taxes: EstimatedTaxes;
 }
 
+export interface MonteCarloRequest {
+  /** How many independent trials to run. Roadmap presets: 1000 / 5000 / 10000. Valid range 100-20000. */
+  num_simulations: number;
+  /** Standard deviation of each year's investment-return shock, in percentage points (e.g. 12.0 = 12%). Valid range 0-60, defaults to 12.0 server-side if omitted, but always send it explicitly from the UI. */
+  volatility: number;
+}
+
+export interface MonteCarloYearBand {
+  year: number;
+  /** Ending-balance percentiles across all simulations for this year, in dollars. p10 < p25 < p50 < p75 < p90 (roughly — could tie at the edges). */
+  p10: number;
+  p25: number;
+  p50: number;
+  p75: number;
+  p90: number;
+}
+
+export interface MonteCarloResult {
+  num_simulations: number;
+  volatility: number;
+  /** Fraction 0.0-1.0 (not 0-100) of simulations where the plan's money lasted the whole horizon. */
+  success_rate: number;
+  median_ending_balance: number;
+  best_case_ending_balance: number;
+  worst_case_ending_balance: number;
+  /** One entry per projection year, same year range as the main /projection endpoint's `annual` array. */
+  percentile_bands: MonteCarloYearBand[];
+}
+
 export interface PlanContents {
   has_profile: boolean;
   has_assumptions: boolean;
@@ -440,12 +470,91 @@ export interface Plan {
   id: string;
   name: string;
   contents: PlanContents;
+  /** Scenario cloning and branching (Phase 4, feature 4): the plan this one was cloned from, if any. */
+  parent_plan_id: string | null;
   created_at: string;
   updated_at: string;
 }
 
 export interface SavePlanRequest {
   name: string;
+}
+
+/** An omitted name defaults to "{original name} copy" server-side. */
+export interface ClonePlanRequest {
+  name?: string | null;
+}
+
+/**
+ * One historical version of a plan (Phase 4, feature 7). Does not include
+ * the plan's current snapshot — that's already visible on the `Plan` itself.
+ */
+export interface PlanVersion {
+  id: string;
+  contents: PlanContents;
+  created_at: string;
+}
+
+export interface CompareScenariosRequest {
+  plan_ids: string[];
+}
+
+export interface ScenarioComparison {
+  plan_id: string;
+  plan_name: string;
+  summary: ProjectionSummary;
+  /** Age at which the scenario's money runs out, if it does. */
+  depletion_age: number | null;
+}
+
+/**
+ * Interactive "what-if" overrides (Phase 4, feature 3), layered on top of the
+ * live working set for a single, unsaved recalculation. All fields optional —
+ * an omitted one leaves that input unchanged from the saved plan.
+ */
+export interface WhatIfRequest {
+  inflation_rate?: number | null;
+  investment_return_delta?: number | null;
+  spending_adjustment_pct?: number | null;
+  social_security_delay_years?: number | null;
+  market_crash_pct?: number | null;
+}
+
+/**
+ * A goal the optimizer (Phase 4, feature 5) searches for. Each maps to a
+ * headline figure the withdrawal strategy and Roth conversion ceiling can
+ * actually move — spending itself is a fixed input, not something these two
+ * knobs change.
+ */
+export type OptimizationGoal =
+  | "minimize_taxes"
+  | "maximize_estate"
+  | "maximize_plan_longevity"
+  | "minimize_irmaa"
+  | "maximize_aca_subsidy";
+
+export interface OptimizeRequest {
+  goal: OptimizationGoal;
+}
+
+/**
+ * One candidate strategy the optimizer evaluated. `score` is the
+ * goal-specific figure being compared — higher is always better regardless
+ * of goal, so the UI doesn't need to re-derive which direction is "good."
+ */
+export interface OptimizationCandidate {
+  withdrawal_strategy: WithdrawalStrategy;
+  roth_conversion_ceiling: number;
+  summary: ProjectionSummary;
+  score: number;
+  /** True for the single best-scoring candidate (candidates[0]). */
+  recommended: boolean;
+}
+
+export interface OptimizeResponse {
+  goal: OptimizationGoal;
+  /** Every candidate strategy tried, best first. */
+  candidates: OptimizationCandidate[];
 }
 
 export interface UpsertProfileRequest {

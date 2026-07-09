@@ -1,5 +1,6 @@
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
+use validator::Validate;
 
 /// The planning assumptions actually used to build a projection, echoed back so
 /// the client can show what drove the numbers.
@@ -52,6 +53,8 @@ pub struct ProjectionSummary {
     /// Total Medicare IRMAA surcharges (Part B + Part D) paid over the plan
     /// (Phase 3, feature 4).
     pub total_lifetime_irmaa_surcharges: f64,
+    /// Total required minimum distributions across the plan (RMD module).
+    pub total_lifetime_rmd: f64,
     /// First year in which spending could not be fully funded, if any.
     pub depletion_year: Option<i32>,
 }
@@ -305,4 +308,84 @@ pub struct ProjectionResponse {
     pub annual: Vec<YearProjection>,
     pub quarterly: Vec<QuarterProjection>,
     pub estimated_taxes: EstimatedTaxes,
+}
+
+/// Interactive "what-if" overrides (roadmap Phase 4, feature 3), layered on
+/// top of the user's live working set for a single, unsaved recalculation —
+/// nothing is persisted. All fields are optional; omitted ones leave that
+/// input unchanged from the saved plan.
+#[derive(Debug, Deserialize, ToSchema, Validate, Default)]
+pub struct WhatIfRequest {
+    /// Replace the inflation-rate assumption entirely (percent, e.g. `3.5`).
+    #[validate(range(min = -20.0, max = 30.0, message = "must be between -20 and 30"))]
+    #[schema(example = 3.5)]
+    pub inflation_rate: Option<f64>,
+    /// Shift every account's expected return by this many percentage points
+    /// (e.g. `-2.0` models a more conservative portfolio).
+    #[validate(range(min = -20.0, max = 20.0, message = "must be between -20 and 20"))]
+    #[schema(example = -2.0)]
+    pub investment_return_delta: Option<f64>,
+    /// Scale every spending item's amount by this percentage (e.g. `-10.0`
+    /// cuts spending 10%, `15.0` raises it 15%).
+    #[validate(range(min = -80.0, max = 200.0, message = "must be between -80 and 200"))]
+    #[schema(example = -10.0)]
+    pub spending_adjustment_pct: Option<f64>,
+    /// Delay every Social Security income source's start date by this many
+    /// years (e.g. `2` models claiming two years later).
+    #[validate(range(min = -10, max = 10, message = "must be between -10 and 10"))]
+    #[schema(example = 2)]
+    pub social_security_delay_years: Option<i32>,
+    /// One-time investment-return shock applied only to the first projected
+    /// year, in percentage points (e.g. `-30.0` models a 30-point-worse first
+    /// year, layered on top of `investment_return_delta`).
+    #[validate(range(min = -80.0, max = 0.0, message = "must be between -80 and 0"))]
+    #[schema(example = -30.0)]
+    pub market_crash_pct: Option<f64>,
+}
+
+/// A goal the optimizer (roadmap Phase 4, feature 5) searches for. Each maps
+/// to a headline figure in [`ProjectionSummary`] that the withdrawal
+/// sequencing strategy and Roth conversion ceiling can actually move —
+/// spending itself is a fixed input, not something these two knobs change.
+#[derive(Debug, Clone, Copy, Deserialize, Serialize, ToSchema, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum OptimizationGoal {
+    /// Lowest total federal + state tax paid over the plan.
+    MinimizeTaxes,
+    /// Largest ending account balance (the estate).
+    MaximizeEstate,
+    /// Latest depletion year, or no depletion at all.
+    MaximizePlanLongevity,
+    /// Lowest total Medicare IRMAA surcharges paid.
+    MinimizeIrmaa,
+    /// Largest total ACA premium tax credit received.
+    MaximizeAcaSubsidy,
+}
+
+/// Request body for the optimization search (roadmap Phase 4, feature 5).
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct OptimizeRequest {
+    pub goal: OptimizationGoal,
+}
+
+/// One candidate strategy evaluated by the optimizer, with its resulting
+/// headline figures. `score` is the goal-specific figure being compared
+/// (higher is always better, regardless of goal) so the UI can display it
+/// directly without re-deriving which direction is "good."
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct OptimizationCandidate {
+    pub withdrawal_strategy: String,
+    pub roth_conversion_ceiling: f64,
+    pub summary: ProjectionSummary,
+    pub score: f64,
+    /// True for the single best-scoring candidate (`candidates[0]`).
+    pub recommended: bool,
+}
+
+/// Optimizer results (roadmap Phase 4, feature 5): every candidate strategy
+/// tried, best first.
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct OptimizeResponse {
+    pub goal: OptimizationGoal,
+    pub candidates: Vec<OptimizationCandidate>,
 }

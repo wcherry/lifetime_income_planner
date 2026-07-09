@@ -2,13 +2,20 @@ import { useEffect, useState } from "react";
 import { api, ApiError } from "../api/client";
 import type {
   EstimatedTaxes,
+  MonteCarloResult,
+  OptimizationCandidate,
+  OptimizationGoal,
+  OptimizeResponse,
   Projection,
+  ProjectionSummary,
+  WithdrawalStrategy,
   YearAca,
   YearIrmaa,
   YearProjection,
   YearTax,
 } from "../api/types";
-import { Alert, Button, Card } from "../components/ui";
+import { Alert, Button, Card, Field, Select, TextInput } from "../components/ui";
+import { MonteCarloChart } from "../components/MonteCarloChart";
 import { NetWorthChart } from "../components/NetWorthChart";
 import {
   categoryLabel,
@@ -191,6 +198,15 @@ export function ProjectionPage() {
         <NetWorthChart annual={annual} depletionYear={summary.depletion_year} />
       </Card>
 
+      {/* Interactive what-if controls (Phase 4, feature 3) */}
+      <WhatIfCard baseline={projection} />
+
+      {/* Optimization goals (Phase 4, feature 5) */}
+      <OptimizeCard />
+
+      {/* Monte Carlo simulation (Phase 4, feature 6) */}
+      <MonteCarloCard />
+
       {/* Quarterly withdrawal schedule (feature 9) */}
       <Card title={`Withdrawal schedule · ${projection.start_year}`} collapsible>
         <p className="muted">What to withdraw from which account next, taxable balances first.</p>
@@ -354,6 +370,531 @@ export function ProjectionPage() {
         </div>
       </Card>
     </div>
+  );
+}
+
+/**
+ * Interactive what-if controls (Phase 4, feature 3): sliders for inflation,
+ * investment return, spending level, Social Security timing, and a one-time
+ * market crash, recalculated live against the server without saving
+ * anything. Debounces requests while a slider is being dragged and compares
+ * the result against the plan's baseline projection already on the page.
+ */
+function WhatIfCard({ baseline }: { baseline: Projection }) {
+  const baseInflation = baseline.assumptions.inflation_rate;
+  const [inflationRate, setInflationRate] = useState(baseInflation);
+  const [roiDelta, setRoiDelta] = useState(0);
+  const [spendingPct, setSpendingPct] = useState(0);
+  const [ssDelayYears, setSsDelayYears] = useState(0);
+  const [marketCrashPct, setMarketCrashPct] = useState(0);
+  const [result, setResult] = useState<Projection | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const isBaseline =
+    inflationRate === baseInflation &&
+    roiDelta === 0 &&
+    spendingPct === 0 &&
+    ssDelayYears === 0 &&
+    marketCrashPct === 0;
+
+  useEffect(() => {
+    if (isBaseline) {
+      setResult(null);
+      setError(null);
+      return;
+    }
+    let active = true;
+    const handle = setTimeout(async () => {
+      setLoading(true);
+      setError(null);
+      try {
+        const r = await api.runWhatIf({
+          inflation_rate: inflationRate,
+          investment_return_delta: roiDelta,
+          spending_adjustment_pct: spendingPct,
+          social_security_delay_years: ssDelayYears,
+          market_crash_pct: marketCrashPct === 0 ? null : marketCrashPct,
+        });
+        if (active) setResult(r);
+      } catch (err) {
+        if (active) setError(err instanceof Error ? err.message : "Failed to recalculate");
+      } finally {
+        if (active) setLoading(false);
+      }
+    }, 400);
+    return () => {
+      active = false;
+      clearTimeout(handle);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [inflationRate, roiDelta, spendingPct, ssDelayYears, marketCrashPct]);
+
+  function handleReset() {
+    setInflationRate(baseInflation);
+    setRoiDelta(0);
+    setSpendingPct(0);
+    setSsDelayYears(0);
+    setMarketCrashPct(0);
+  }
+
+  return (
+    <Card title="What-if" collapsible defaultOpen={false}>
+      <p className="muted">
+        Drag a slider to see how the plan reacts. Nothing is saved — this compares against your
+        current plan below.
+      </p>
+
+      <div className="what-if-controls">
+        <SliderControl
+          label="Inflation"
+          value={inflationRate}
+          onChange={setInflationRate}
+          min={-2}
+          max={10}
+          step={0.1}
+          suffix="%"
+          format={(v) => v.toFixed(1)}
+        />
+        <SliderControl
+          label="Investment return"
+          value={roiDelta}
+          onChange={setRoiDelta}
+          min={-10}
+          max={10}
+          step={0.5}
+          suffix=" pts"
+          signed
+        />
+        <SliderControl
+          label="Annual spending"
+          value={spendingPct}
+          onChange={setSpendingPct}
+          min={-50}
+          max={50}
+          step={1}
+          suffix="%"
+          signed
+        />
+        <SliderControl
+          label="Social Security timing"
+          value={ssDelayYears}
+          onChange={setSsDelayYears}
+          min={-5}
+          max={5}
+          step={1}
+          suffix=" yrs"
+          signed
+        />
+        <SliderControl
+          label="Market crash (year 1)"
+          value={marketCrashPct}
+          onChange={setMarketCrashPct}
+          min={-50}
+          max={0}
+          step={5}
+          suffix=" pts"
+        />
+      </div>
+
+      <div className="form-actions">
+        <Button variant="ghost" onClick={handleReset} disabled={isBaseline}>
+          Reset to baseline
+        </Button>
+        {loading && <span className="muted">Recalculating…</span>}
+      </div>
+
+      {error && <Alert kind="error">{error}</Alert>}
+
+      {result && (
+        <div className="what-if-compare">
+          <WhatIfTile
+            label="Estate"
+            baseline={baseline.summary.projected_ending_balance}
+            value={result.summary.projected_ending_balance}
+          />
+          <WhatIfTile
+            label="Lifetime taxes"
+            baseline={baseline.summary.total_lifetime_taxes}
+            value={result.summary.total_lifetime_taxes}
+            lowerIsBetter
+          />
+          <WhatIfTile
+            label="Lifetime withdrawals"
+            baseline={baseline.summary.total_lifetime_withdrawals}
+            value={result.summary.total_lifetime_withdrawals}
+            lowerIsBetter
+          />
+          <div className="what-if-compare-tile">
+            <span className="tile-label">Money lasts</span>
+            <span className="tile-value tile-value-sm">
+              {result.summary.depletion_year != null
+                ? `Runs short in ${result.summary.depletion_year}`
+                : "Full plan"}
+            </span>
+          </div>
+        </div>
+      )}
+    </Card>
+  );
+}
+
+function SliderControl({
+  label,
+  value,
+  onChange,
+  min,
+  max,
+  step,
+  suffix,
+  signed,
+  format,
+}: {
+  label: string;
+  value: number;
+  onChange: (v: number) => void;
+  min: number;
+  max: number;
+  step: number;
+  suffix: string;
+  signed?: boolean;
+  format?: (v: number) => string;
+}) {
+  const displayed = format ? format(value) : String(value);
+  const sign = signed && value > 0 ? "+" : "";
+  return (
+    <div className="what-if-control">
+      <div className="what-if-control-head">
+        <span>{label}</span>
+        <span className="what-if-control-value">
+          {sign}
+          {displayed}
+          {suffix}
+        </span>
+      </div>
+      <input
+        type="range"
+        className="what-if-slider"
+        min={min}
+        max={max}
+        step={step}
+        value={value}
+        onChange={(e) => onChange(Number(e.target.value))}
+        aria-label={label}
+      />
+    </div>
+  );
+}
+
+/** One comparison tile: the what-if value plus its delta from baseline. */
+function WhatIfTile({
+  label,
+  baseline,
+  value,
+  lowerIsBetter,
+}: {
+  label: string;
+  baseline: number;
+  value: number;
+  lowerIsBetter?: boolean;
+}) {
+  const delta = value - baseline;
+  const improved = lowerIsBetter ? delta <= 0 : delta >= 0;
+  return (
+    <div className="what-if-compare-tile">
+      <span className="tile-label">{label}</span>
+      <span className="tile-value tile-value-sm">{formatCurrency(value)}</span>
+      {Math.abs(delta) >= 1 && (
+        <span
+          className={`what-if-compare-delta ${
+            improved ? "what-if-compare-delta-up" : "what-if-compare-delta-down"
+          }`}
+        >
+          {formatSignedCurrency(delta)} vs. current plan
+        </span>
+      )}
+    </div>
+  );
+}
+
+const GOAL_OPTIONS: { value: OptimizationGoal; label: string }[] = [
+  { value: "minimize_taxes", label: "Minimize lifetime taxes" },
+  { value: "maximize_estate", label: "Maximize estate (ending balance)" },
+  { value: "maximize_plan_longevity", label: "Maximize plan longevity" },
+  { value: "minimize_irmaa", label: "Minimize Medicare IRMAA surcharges" },
+  { value: "maximize_aca_subsidy", label: "Maximize ACA subsidies" },
+];
+
+function strategyLabel(s: WithdrawalStrategy): string {
+  return s === "tax_optimized" ? "Tax-optimized" : "Conventional";
+}
+
+function goalMetricLabel(goal: OptimizationGoal): string {
+  switch (goal) {
+    case "minimize_taxes":
+      return "Lifetime taxes";
+    case "maximize_estate":
+      return "Estate";
+    case "maximize_plan_longevity":
+      return "Money lasts until";
+    case "minimize_irmaa":
+      return "Lifetime IRMAA";
+    case "maximize_aca_subsidy":
+      return "Lifetime ACA subsidy";
+  }
+}
+
+function goalMetricValue(goal: OptimizationGoal, summary: ProjectionSummary): string {
+  switch (goal) {
+    case "minimize_taxes":
+      return formatCurrency(summary.total_lifetime_taxes);
+    case "maximize_estate":
+      return formatCurrency(summary.projected_ending_balance);
+    case "maximize_plan_longevity":
+      return summary.depletion_year != null ? String(summary.depletion_year) : "Full plan";
+    case "minimize_irmaa":
+      return formatCurrency(summary.total_lifetime_irmaa_surcharges);
+    case "maximize_aca_subsidy":
+      return formatCurrency(summary.total_lifetime_aca_subsidies);
+  }
+}
+
+/**
+ * Optimization goals (Phase 4, feature 5): searches a small grid of
+ * withdrawal-strategy / Roth-conversion-ceiling combinations against the
+ * live working set — reusing the same projection engine as the what-if and
+ * comparison features — and recommends whichever combination best serves the
+ * chosen goal. "Apply to my plan" saves the recommendation as the user's
+ * actual assumptions.
+ */
+function OptimizeCard() {
+  const [goal, setGoal] = useState<OptimizationGoal>("minimize_taxes");
+  const [result, setResult] = useState<OptimizeResponse | null>(null);
+  const [running, setRunning] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [applying, setApplying] = useState(false);
+  const [applied, setApplied] = useState(false);
+
+  async function handleRun() {
+    setError(null);
+    setApplied(false);
+    setRunning(true);
+    try {
+      const r = await api.optimizeProjection({ goal });
+      setResult(r);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to run optimizer");
+    } finally {
+      setRunning(false);
+    }
+  }
+
+  async function handleApply(candidate: OptimizationCandidate) {
+    const ceilingText =
+      candidate.roth_conversion_ceiling > 0
+        ? formatCurrency(candidate.roth_conversion_ceiling) + " Roth ceiling"
+        : "no Roth conversions";
+    if (
+      !window.confirm(
+        `Apply ${strategyLabel(candidate.withdrawal_strategy)} withdrawals with ${ceilingText} to your saved assumptions?`,
+      )
+    )
+      return;
+    setApplying(true);
+    setError(null);
+    try {
+      const current = await api.getAssumptions();
+      await api.saveAssumptions({
+        inflation_rate: current.inflation_rate,
+        investment_return_rate: current.investment_return_rate,
+        healthcare_inflation_rate: current.healthcare_inflation_rate,
+        social_security_cola_rate: current.social_security_cola_rate,
+        roth_conversion_ceiling: candidate.roth_conversion_ceiling,
+        roth_conversion_start_year: null,
+        roth_conversion_end_year: null,
+        withdrawal_strategy: candidate.withdrawal_strategy,
+        aca_benchmark_annual_premium: current.aca_benchmark_annual_premium,
+        medicare_part_b_annual_premium: current.medicare_part_b_annual_premium,
+      });
+      setApplied(true);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to apply recommendation");
+    } finally {
+      setApplying(false);
+    }
+  }
+
+  return (
+    <Card title="Optimize" collapsible defaultOpen={false}>
+      <p className="muted">
+        Searches withdrawal strategy and Roth conversion levels against your current plan and
+        recommends whichever combination best serves your goal.
+      </p>
+
+      <div className="grid-2">
+        <Field label="Goal" htmlFor="optimize-goal">
+          <Select
+            id="optimize-goal"
+            value={goal}
+            onChange={(e) => setGoal(e.target.value as OptimizationGoal)}
+          >
+            {GOAL_OPTIONS.map((g) => (
+              <option key={g.value} value={g.value}>
+                {g.label}
+              </option>
+            ))}
+          </Select>
+        </Field>
+      </div>
+
+      <div className="form-actions">
+        <Button onClick={handleRun} disabled={running}>
+          {running ? "Searching…" : "Find best strategy"}
+        </Button>
+      </div>
+
+      {error && <Alert kind="error">{error}</Alert>}
+      {applied && <Alert kind="success">Applied to your saved assumptions.</Alert>}
+
+      {result && (
+        <div className="table-scroll">
+          <table className="proj-table compare-table">
+            <thead>
+              <tr>
+                <th>Strategy</th>
+                <th className="num">Roth ceiling</th>
+                <th className="num">{goalMetricLabel(result.goal)}</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              {result.candidates.map((c, i) => (
+                <tr key={i} className={c.recommended ? "row-good" : ""}>
+                  <td>
+                    {strategyLabel(c.withdrawal_strategy)}
+                    {c.recommended && " — recommended"}
+                  </td>
+                  <td className="num">
+                    {c.roth_conversion_ceiling > 0
+                      ? formatCurrency(c.roth_conversion_ceiling)
+                      : "Off"}
+                  </td>
+                  <td className="num">{goalMetricValue(result.goal, c.summary)}</td>
+                  <td>
+                    {c.recommended && (
+                      <Button variant="ghost" onClick={() => handleApply(c)} disabled={applying}>
+                        {applying ? "Applying…" : "Apply to my plan"}
+                      </Button>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </Card>
+  );
+}
+
+/**
+ * Monte Carlo simulation (Phase 4, feature 6): runs the saved plan through
+ * thousands of randomized-return trials, server-side, on demand. Unlike the
+ * rest of the page this card doesn't block on the initial projection load —
+ * running thousands of simulations is a slower, opt-in action — so it
+ * manages its own request lifecycle entirely locally.
+ */
+function MonteCarloCard() {
+  const [numSimulations, setNumSimulations] = useState(1000);
+  const [volatility, setVolatility] = useState(12);
+  const [result, setResult] = useState<MonteCarloResult | null>(null);
+  const [running, setRunning] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function handleRun() {
+    setError(null);
+    setRunning(true);
+    try {
+      const r = await api.runMonteCarlo({ num_simulations: numSimulations, volatility });
+      setResult(r);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to run simulation");
+    } finally {
+      setRunning(false);
+    }
+  }
+
+  return (
+    <Card title="Monte Carlo simulation" collapsible>
+      <p className="muted">
+        Runs your plan thousands of times with randomized investment returns each year to show the
+        probability your money lasts, not just a single average-return path.
+      </p>
+
+      <div className="grid-2">
+        <Field label="Number of simulations" htmlFor="mc-num-simulations">
+          <Select
+            id="mc-num-simulations"
+            value={numSimulations}
+            onChange={(e) => setNumSimulations(Number(e.target.value))}
+          >
+            <option value={1000}>1,000</option>
+            <option value={5000}>5,000</option>
+            <option value={10000}>10,000</option>
+          </Select>
+        </Field>
+        <Field
+          label="Return volatility (±%)"
+          htmlFor="mc-volatility"
+          hint="Standard deviation of each year's investment return, applied as a market-wide shock across every simulated year."
+        >
+          <TextInput
+            id="mc-volatility"
+            type="number"
+            step="0.5"
+            min="0"
+            max="60"
+            value={volatility}
+            onChange={(e) => setVolatility(Number(e.target.value))}
+          />
+        </Field>
+      </div>
+
+      <div className="form-actions">
+        <Button onClick={handleRun} disabled={running}>
+          {running ? "Running…" : `Run ${numSimulations.toLocaleString()} simulations`}
+        </Button>
+      </div>
+
+      {error && <Alert kind="error">{error}</Alert>}
+
+      {result && (
+        <>
+          <div className="tile-grid">
+            <div className={`tile ${result.success_rate >= 0.9 ? "tile-good" : "tile-warn"}`}>
+              <span className="tile-label">Success rate</span>
+              <span className="tile-value">{formatRate(result.success_rate)}</span>
+              <span className="tile-sub muted">
+                simulations where money lasted the full horizon
+              </span>
+            </div>
+            <div className="tile">
+              <span className="tile-label">Median ending balance</span>
+              <span className="tile-value">{formatCurrency(result.median_ending_balance)}</span>
+            </div>
+            <div className="tile">
+              <span className="tile-label">Best case</span>
+              <span className="tile-value">{formatCurrency(result.best_case_ending_balance)}</span>
+            </div>
+            <div className="tile">
+              <span className="tile-label">Worst case</span>
+              <span className="tile-value">{formatCurrency(result.worst_case_ending_balance)}</span>
+            </div>
+          </div>
+          <MonteCarloChart bands={result.percentile_bands} />
+        </>
+      )}
+    </Card>
   );
 }
 

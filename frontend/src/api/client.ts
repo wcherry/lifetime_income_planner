@@ -4,18 +4,27 @@ import type {
   Assumptions,
   AssumptionsRequest,
   AuthResponse,
+  ClonePlanRequest,
+  CompareScenariosRequest,
   IncomeRequest,
   IncomeSource,
   LifeEvent,
   LifeEventRequest,
+  MonteCarloRequest,
+  MonteCarloResult,
+  OptimizeRequest,
+  OptimizeResponse,
   Plan,
+  PlanVersion,
   Profile,
   Projection,
   SavePlanRequest,
+  ScenarioComparison,
   SpendingItem,
   SpendingRequest,
   UpsertProfileRequest,
   User,
+  WhatIfRequest,
 } from "./types";
 
 const TOKEN_KEY = "lip_token";
@@ -160,11 +169,33 @@ export const api = {
 
   getProjection: () => request<Projection>("GET", "/projection"),
 
+  runWhatIf: (payload: WhatIfRequest) =>
+    request<Projection>("POST", "/projection/what-if", payload),
+
+  optimizeProjection: (payload: OptimizeRequest) =>
+    request<OptimizeResponse>("POST", "/projection/optimize", payload),
+
+  runMonteCarlo: (payload: MonteCarloRequest) =>
+    request<MonteCarloResult>("POST", "/monte-carlo", payload),
+
   downloadTaxSummaryCsv,
 
   listPlans: () => request<Plan[]>("GET", "/plans"),
 
+  compareScenarios: (payload: CompareScenariosRequest) =>
+    request<ScenarioComparison[]>("POST", "/plans/compare", payload),
+
   savePlan: (payload: SavePlanRequest) => request<Plan>("POST", "/plans", payload),
+
+  clonePlan: (id: string, payload: ClonePlanRequest = {}) =>
+    request<Plan>("POST", `/plans/${id}/clone`, payload),
+
+  updatePlanSnapshot: (id: string) => request<Plan>("POST", `/plans/${id}/versions`),
+
+  listPlanVersions: (id: string) => request<PlanVersion[]>("GET", `/plans/${id}/versions`),
+
+  restorePlanVersion: (id: string, versionId: string) =>
+    request<Plan>("POST", `/plans/${id}/versions/${versionId}/restore`),
 
   renamePlan: (id: string, payload: SavePlanRequest) =>
     request<Plan>("PUT", `/plans/${id}`, payload),

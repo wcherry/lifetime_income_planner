@@ -1,6 +1,6 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { api } from "../api/client";
-import type { Plan } from "../api/types";
+import type { Plan, PlanVersion } from "../api/types";
 import { Alert, Button, Card, Field, TextInput } from "../components/ui";
 import { planSummary } from "../data/plans";
 
@@ -11,6 +11,19 @@ function formatDate(iso: string): string {
     : d.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
 }
 
+function formatDateTime(iso: string): string {
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime())
+    ? ""
+    : d.toLocaleString(undefined, {
+        year: "numeric",
+        month: "short",
+        day: "numeric",
+        hour: "numeric",
+        minute: "2-digit",
+      });
+}
+
 export function PlansPage() {
   const [plans, setPlans] = useState<Plan[]>([]);
   const [loading, setLoading] = useState(true);
@@ -19,6 +32,9 @@ export function PlansPage() {
   const [name, setName] = useState("");
   const [saving, setSaving] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [historyOpenId, setHistoryOpenId] = useState<string | null>(null);
+  const [versionsByPlan, setVersionsByPlan] = useState<Record<string, PlanVersion[]>>({});
+  const [versionsLoading, setVersionsLoading] = useState<string | null>(null);
 
   async function refresh() {
     try {
@@ -72,6 +88,92 @@ export function PlansPage() {
     }
   }
 
+  async function handleClone(plan: Plan) {
+    const suggested = `${plan.name} copy`;
+    const next = window.prompt("Name for the cloned scenario", suggested);
+    if (next == null) return;
+    const trimmed = next.trim();
+    setError(null);
+    setNotice(null);
+    setBusyId(plan.id);
+    try {
+      const clone = await api.clonePlan(plan.id, trimmed === "" ? {} : { name: trimmed });
+      setNotice(`Cloned "${plan.name}" as "${clone.name}".`);
+      await refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to clone plan");
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  async function loadVersions(planId: string) {
+    setVersionsLoading(planId);
+    try {
+      const versions = await api.listPlanVersions(planId);
+      setVersionsByPlan((cur) => ({ ...cur, [planId]: versions }));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to load version history");
+    } finally {
+      setVersionsLoading(null);
+    }
+  }
+
+  function toggleHistory(plan: Plan) {
+    if (historyOpenId === plan.id) {
+      setHistoryOpenId(null);
+      return;
+    }
+    setHistoryOpenId(plan.id);
+    loadVersions(plan.id);
+  }
+
+  async function handleUpdateSnapshot(plan: Plan) {
+    if (
+      !window.confirm(
+        `Refresh "${plan.name}" with your current working data? The scenario's previous data ` +
+          `is kept in its version history, not lost.`,
+      )
+    )
+      return;
+    setError(null);
+    setNotice(null);
+    setBusyId(plan.id);
+    try {
+      await api.updatePlanSnapshot(plan.id);
+      setNotice(`Updated "${plan.name}" with your current data.`);
+      await refresh();
+      if (historyOpenId === plan.id) await loadVersions(plan.id);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to update plan");
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  async function handleRestore(plan: Plan, version: PlanVersion) {
+    if (
+      !window.confirm(
+        `Restore "${plan.name}" to its ${formatDateTime(version.created_at)} version? ` +
+          `The scenario's current data is kept in its version history, not lost.`,
+      )
+    )
+      return;
+    setError(null);
+    setNotice(null);
+    setBusyId(plan.id);
+    try {
+      await api.restorePlanVersion(plan.id, version.id);
+      setNotice(`Restored "${plan.name}" to its ${formatDateTime(version.created_at)} version.`);
+      await refresh();
+      await loadVersions(plan.id);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to restore version");
+    } finally {
+      setBusyId(null);
+    }
+  }
+
   async function handleRename(plan: Plan) {
     const next = window.prompt("Rename plan", plan.name);
     if (next == null) return;
@@ -108,7 +210,8 @@ export function PlansPage() {
           <h1>Saved plans</h1>
           <p className="muted">
             Snapshot your whole plan and switch between versions. Loading a plan replaces your
-            current working data.
+            current working data. Clone a scenario to branch off it and iterate without touching
+            the original.
           </p>
         </div>
       </div>
@@ -147,28 +250,110 @@ export function PlansPage() {
         </Card>
       ) : (
         <div className="account-list">
-          {plans.map((p) => (
-            <div className="account-row" key={p.id}>
+          {plans.map((p) => {
+            const parentName = p.parent_plan_id
+              ? (plans.find((other) => other.id === p.parent_plan_id)?.name ?? "a deleted scenario")
+              : null;
+            return (
+              <div className="account-row" key={p.id}>
+                <div className="account-main">
+                  <span className="account-name">{p.name}</span>
+                  <span className="account-meta muted">{planSummary(p.contents)}</span>
+                  <span className="account-meta muted">Saved {formatDate(p.created_at)}</span>
+                  {parentName && (
+                    <span className="account-meta muted">Cloned from {parentName}</span>
+                  )}
+                </div>
+                <div className="account-actions">
+                  <Button variant="ghost" onClick={() => handleLoad(p)} disabled={busyId === p.id}>
+                    {busyId === p.id ? "Loading…" : "Load"}
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    onClick={() => handleUpdateSnapshot(p)}
+                    disabled={busyId === p.id}
+                  >
+                    Update
+                  </Button>
+                  <Button variant="ghost" onClick={() => handleClone(p)} disabled={busyId === p.id}>
+                    Clone
+                  </Button>
+                  <Button variant="ghost" onClick={() => toggleHistory(p)}>
+                    {historyOpenId === p.id ? "Hide history" : "History"}
+                  </Button>
+                  <Button variant="ghost" onClick={() => handleRename(p)}>
+                    Rename
+                  </Button>
+                  <Button variant="ghost" onClick={() => handleDelete(p)}>
+                    Delete
+                  </Button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {historyOpenId && (
+        <PlanHistoryCard
+          plan={plans.find((p) => p.id === historyOpenId) ?? null}
+          versions={versionsByPlan[historyOpenId] ?? []}
+          loading={versionsLoading === historyOpenId}
+          busy={busyId === historyOpenId}
+          onRestore={handleRestore}
+        />
+      )}
+    </div>
+  );
+}
+
+/**
+ * Historical scenario snapshots (roadmap Phase 4, feature 7): the timeline of
+ * past versions for one plan, each restorable back to current.
+ */
+function PlanHistoryCard({
+  plan,
+  versions,
+  loading,
+  busy,
+  onRestore,
+}: {
+  plan: Plan | null;
+  versions: PlanVersion[];
+  loading: boolean;
+  busy: boolean;
+  onRestore: (plan: Plan, version: PlanVersion) => void;
+}) {
+  if (!plan) return null;
+  return (
+    <Card title={`History · ${plan.name}`}>
+      <p className="muted">
+        Every time this scenario is updated with fresh data, its previous version is kept here.
+        Restoring brings a past version back as the current one — nothing is ever deleted.
+      </p>
+      {loading ? (
+        <p className="muted center">Loading history…</p>
+      ) : versions.length === 0 ? (
+        <p className="muted center">
+          No history yet — updating this scenario with current data will start its timeline.
+        </p>
+      ) : (
+        <div className="account-list">
+          {versions.map((v) => (
+            <div className="account-row" key={v.id}>
               <div className="account-main">
-                <span className="account-name">{p.name}</span>
-                <span className="account-meta muted">{planSummary(p.contents)}</span>
-                <span className="account-meta muted">Saved {formatDate(p.created_at)}</span>
+                <span className="account-name">{formatDateTime(v.created_at)}</span>
+                <span className="account-meta muted">{planSummary(v.contents)}</span>
               </div>
               <div className="account-actions">
-                <Button variant="ghost" onClick={() => handleLoad(p)} disabled={busyId === p.id}>
-                  {busyId === p.id ? "Loading…" : "Load"}
-                </Button>
-                <Button variant="ghost" onClick={() => handleRename(p)}>
-                  Rename
-                </Button>
-                <Button variant="ghost" onClick={() => handleDelete(p)}>
-                  Delete
+                <Button variant="ghost" onClick={() => onRestore(plan, v)} disabled={busy}>
+                  Restore
                 </Button>
               </div>
             </div>
           ))}
         </div>
       )}
-    </div>
+    </Card>
   );
 }

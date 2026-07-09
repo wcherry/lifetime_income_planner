@@ -31,6 +31,7 @@ const baseSummary: ProjectionSummary = {
   total_lifetime_aca_subsidies: 0,
   total_lifetime_medicare_premiums: 0,
   total_lifetime_irmaa_surcharges: 0,
+  total_lifetime_rmd: 0,
   depletion_year: null,
 };
 
