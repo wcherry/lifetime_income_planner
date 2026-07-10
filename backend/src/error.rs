@@ -16,6 +16,9 @@ pub enum AppError {
     Unauthorized,
 
     #[error("{0}")]
+    Forbidden(String),
+
+    #[error("{0}")]
     Conflict(String),
 
     #[error("{0}")]
@@ -35,6 +38,7 @@ impl ResponseError for AppError {
         match self {
             AppError::BadRequest(_) => StatusCode::BAD_REQUEST,
             AppError::InvalidCredentials | AppError::Unauthorized => StatusCode::UNAUTHORIZED,
+            AppError::Forbidden(_) => StatusCode::FORBIDDEN,
             AppError::Conflict(_) => StatusCode::CONFLICT,
             AppError::NotFound(_) => StatusCode::NOT_FOUND,
             AppError::Internal(_) => StatusCode::INTERNAL_SERVER_ERROR,

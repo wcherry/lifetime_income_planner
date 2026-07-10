@@ -8,6 +8,12 @@ pub struct Config {
     pub jwt_expiry_hours: i64,
     pub host: String,
     pub port: u16,
+    /// Plaid sandbox/production credentials (Phase 6: account aggregation).
+    /// Left unset in local dev — endpoints that need them return a clear
+    /// "not configured" error rather than panicking at startup.
+    pub plaid_client_id: Option<String>,
+    pub plaid_secret: Option<String>,
+    pub plaid_env: String,
 }
 
 impl Config {
@@ -26,6 +32,9 @@ impl Config {
                 .ok()
                 .and_then(|v| v.parse().ok())
                 .unwrap_or(8080),
+            plaid_client_id: env::var("PLAID_CLIENT_ID").ok().filter(|s| !s.is_empty()),
+            plaid_secret: env::var("PLAID_SECRET").ok().filter(|s| !s.is_empty()),
+            plaid_env: env::var("PLAID_ENV").unwrap_or_else(|_| "sandbox".to_string()),
         }
     }
 }

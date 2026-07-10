@@ -687,3 +687,136 @@ export interface QuarterlyReviewOverview {
   due: DueQuarterlyReview[];
   history: QuarterlyReview[];
 }
+
+// --- Phase 6: financial account aggregation (Plaid) ---
+
+/** Connect a sandbox institution. There's no Plaid Link widget wired in — this exercises the exchange flow via Plaid's sandbox test-token endpoint. */
+export interface PlaidSandboxConnectRequest {
+  institution_id: string;
+  institution_name: string;
+  link_account_id?: string | null;
+}
+
+export interface PlaidItem {
+  id: string;
+  account_id: string | null;
+  institution_name: string;
+  status: string;
+  last_synced_at: string | null;
+  created_at: string;
+}
+
+export interface PlaidSyncResponse {
+  item: PlaidItem;
+  new_transaction_count: number;
+  updated_balance: number | null;
+}
+
+// --- Phase 6: tax form imports ---
+
+export type TaxFormType = "1099-div" | "1099-int" | "1099-r" | "w2" | "ssa-1099";
+
+export interface ImportTaxDocumentRequest {
+  tax_year: number;
+  form_type: TaxFormType;
+  /** Raw two-column CSV, one `field,amount` row per line (a header row is fine and gets skipped). */
+  csv_content: string;
+  source_filename?: string | null;
+}
+
+export interface TaxDocument {
+  id: string;
+  tax_year: number;
+  form_type: TaxFormType;
+  box_data: Record<string, number>;
+  /** Sum of every parsed box amount. */
+  total: number;
+  source_filename: string | null;
+  imported_at: string;
+}
+
+export interface TaxDocumentYearSummary {
+  tax_year: number;
+  document_count: number;
+  totals_by_field: Record<string, number>;
+  grand_total: number;
+}
+
+// --- Phase 6: Social Security statement import ---
+
+export type SsEstimateOwner = "self" | "spouse";
+
+export interface ImportSocialSecurityEstimateRequest {
+  owner: SsEstimateOwner;
+  statement_date: string;
+  estimate_at_62?: number | null;
+  estimate_at_67?: number | null;
+  estimate_at_70?: number | null;
+}
+
+export interface SocialSecurityEstimate {
+  id: string;
+  owner: SsEstimateOwner;
+  statement_date: string;
+  estimate_at_62: number | null;
+  estimate_at_67: number | null;
+  estimate_at_70: number | null;
+  source: string;
+  created_at: string;
+}
+
+// --- Phase 6: personalized insights & anomaly detection ---
+
+export type InsightCategory =
+  | "aca_subsidy"
+  | "irmaa"
+  | "rmd"
+  | "negative_cash_flow"
+  | "unexpected_spending"
+  | "quarterly_review_due"
+  | "aggressive_portfolio"
+  | "sequence_of_return_risk";
+
+export type InsightSeverity = "low" | "medium" | "high";
+
+export interface Insight {
+  category: InsightCategory;
+  severity: InsightSeverity;
+  title: string;
+  message: string;
+}
+
+// --- Phase 6: collaboration (spouses & advisors) ---
+
+export type CollaboratorRole = "spouse" | "advisor";
+
+export interface InviteCollaboratorRequest {
+  email: string;
+  role: CollaboratorRole;
+}
+
+export interface Collaborator {
+  id: string;
+  email: string;
+  role: CollaboratorRole;
+  /** "pending" | "active" | "declined" */
+  status: string;
+  created_at: string;
+}
+
+/** A pending invitation addressed to the caller, awaiting accept/decline. */
+export interface Invitation {
+  id: string;
+  owner_email: string;
+  role: CollaboratorRole;
+  created_at: string;
+}
+
+/** A context the caller can act as: their own data, or another owner's data they've been granted access to. */
+export interface CollaborationContext {
+  /** Send as the `X-Context-User` header to act in this context. */
+  user_id: string;
+  label: string;
+  /** "owner" | "spouse" | "advisor" */
+  role: string;
+}

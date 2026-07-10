@@ -58,6 +58,19 @@ diesel::table! {
 }
 
 diesel::table! {
+    collaborators (id) {
+        id -> Text,
+        owner_user_id -> Text,
+        collaborator_user_id -> Text,
+        invited_email -> Text,
+        role -> Text,
+        status -> Text,
+        created_at -> Timestamp,
+        updated_at -> Timestamp,
+    }
+}
+
+diesel::table! {
     income_sources (id) {
         id -> Text,
         user_id -> Text,
@@ -104,6 +117,36 @@ diesel::table! {
         notes -> Nullable<Text>,
         created_at -> Timestamp,
         updated_at -> Timestamp,
+    }
+}
+
+diesel::table! {
+    plaid_items (id) {
+        id -> Text,
+        user_id -> Text,
+        account_id -> Nullable<Text>,
+        plaid_item_id -> Text,
+        plaid_access_token -> Text,
+        institution_name -> Text,
+        status -> Text,
+        last_synced_at -> Nullable<Timestamp>,
+        created_at -> Timestamp,
+        updated_at -> Timestamp,
+    }
+}
+
+diesel::table! {
+    plaid_transactions (id) {
+        id -> Text,
+        user_id -> Text,
+        plaid_item_id -> Text,
+        account_id -> Nullable<Text>,
+        plaid_transaction_id -> Text,
+        posted_date -> Date,
+        amount -> Double,
+        description -> Text,
+        category -> Nullable<Text>,
+        created_at -> Timestamp,
     }
 }
 
@@ -170,6 +213,20 @@ diesel::table! {
 }
 
 diesel::table! {
+    social_security_estimates (id) {
+        id -> Text,
+        user_id -> Text,
+        owner -> Text,
+        statement_date -> Date,
+        estimate_at_62 -> Nullable<Double>,
+        estimate_at_67 -> Nullable<Double>,
+        estimate_at_70 -> Nullable<Double>,
+        source -> Text,
+        created_at -> Timestamp,
+    }
+}
+
+diesel::table! {
     spending_items (id) {
         id -> Text,
         user_id -> Text,
@@ -219,6 +276,18 @@ diesel::table! {
 }
 
 diesel::table! {
+    tax_documents (id) {
+        id -> Text,
+        user_id -> Text,
+        tax_year -> Integer,
+        form_type -> Text,
+        box_data -> Text,
+        source_filename -> Nullable<Text>,
+        imported_at -> Timestamp,
+    }
+}
+
+diesel::table! {
     tax_filing_params (id) {
         id -> Text,
         tax_year -> Integer,
@@ -242,31 +311,43 @@ diesel::table! {
 
 diesel::joinable!(accounts -> users (user_id));
 diesel::joinable!(assumptions -> users (user_id));
+diesel::joinable!(collaborators -> users (owner_user_id));
 diesel::joinable!(income_sources -> users (user_id));
 diesel::joinable!(life_events -> users (user_id));
+diesel::joinable!(plaid_items -> accounts (account_id));
+diesel::joinable!(plaid_items -> users (user_id));
+diesel::joinable!(plaid_transactions -> plaid_items (plaid_item_id));
+diesel::joinable!(plaid_transactions -> users (user_id));
 diesel::joinable!(plan_snapshots -> plans (plan_id));
 diesel::joinable!(plan_snapshots -> users (user_id));
 diesel::joinable!(plans -> users (user_id));
 diesel::joinable!(profiles -> users (user_id));
 diesel::joinable!(quarterly_reviews -> users (user_id));
+diesel::joinable!(social_security_estimates -> users (user_id));
 diesel::joinable!(spending_items -> users (user_id));
+diesel::joinable!(tax_documents -> users (user_id));
 
 diesel::allow_tables_to_appear_in_same_query!(
     aca_applicable_percentages,
     aca_fpl_guidelines,
     accounts,
     assumptions,
+    collaborators,
     income_sources,
     irmaa_brackets,
     life_events,
+    plaid_items,
+    plaid_transactions,
     plan_snapshots,
     plans,
     profiles,
     quarterly_reviews,
+    social_security_estimates,
     spending_items,
     state_tax_brackets,
     state_tax_params,
     tax_brackets,
+    tax_documents,
     tax_filing_params,
     users,
 );

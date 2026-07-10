@@ -2,6 +2,7 @@ use utoipa::openapi::security::{Http, HttpAuthScheme, SecurityScheme};
 use utoipa::{Modify, OpenApi};
 
 use crate::handlers;
+use crate::insights;
 use crate::models;
 
 #[derive(OpenApi)]
@@ -44,6 +45,25 @@ use crate::models;
         handlers::quarterly_review::list_quarterly_reviews,
         handlers::quarterly_review::complete_quarterly_review,
         handlers::reports::get_tax_summary_csv,
+        handlers::plaid::sandbox_connect,
+        handlers::plaid::list_items,
+        handlers::plaid::sync_item,
+        handlers::plaid::delete_item,
+        handlers::tax_document::import_tax_document,
+        handlers::tax_document::list_tax_documents,
+        handlers::tax_document::tax_document_year_summary,
+        handlers::tax_document::delete_tax_document,
+        handlers::social_security_estimate::import_estimate,
+        handlers::social_security_estimate::list_estimates,
+        handlers::social_security_estimate::delete_estimate,
+        handlers::insights::list_insights,
+        handlers::collaborator::invite_collaborator,
+        handlers::collaborator::list_collaborators,
+        handlers::collaborator::list_invitations,
+        handlers::collaborator::accept_invitation,
+        handlers::collaborator::decline_invitation,
+        handlers::collaborator::revoke_collaborator,
+        handlers::collaborator::list_contexts,
         handlers::plan::list_plans,
         handlers::plan::compare_plans,
         handlers::plan::save_plan,
@@ -124,6 +144,25 @@ use crate::models;
         models::QuarterlyReviewOverview,
         models::CompleteReviewRequest,
         models::ActualAccountBalanceInput,
+        models::PlaidSandboxConnectRequest,
+        models::PlaidItemResponse,
+        models::PlaidSyncResponse,
+        models::PlaidTransactionResponse,
+        models::TaxFormType,
+        models::ImportTaxDocumentRequest,
+        models::TaxDocumentResponse,
+        models::TaxDocumentYearSummary,
+        models::SsEstimateOwner,
+        models::ImportSocialSecurityEstimateRequest,
+        models::SocialSecurityEstimateResponse,
+        insights::InsightCategory,
+        insights::InsightSeverity,
+        insights::Insight,
+        models::InviteCollaboratorRequest,
+        models::CollaboratorRole,
+        models::CollaboratorResponse,
+        models::InvitationResponse,
+        models::CollaborationContext,
     )),
     modifiers(&SecurityAddon),
     tags(
@@ -139,6 +178,11 @@ use crate::models;
         (name = "reports", description = "Downloadable tax and planning reports"),
         (name = "plans", description = "Save and load retirement plans"),
         (name = "quarterly_review", description = "Quarterly review workflow (roadmap Phase 5): actual vs. planned income/spending/tax and account balances, with automatic recalculation on completion"),
+        (name = "plaid", description = "Financial account aggregation (roadmap Phase 6): link institutions via Plaid and sync balances/transactions"),
+        (name = "tax_documents", description = "Tax form imports (roadmap Phase 6): parsed 1099/W2/SSA-1099 box amounts compared against the tax projection"),
+        (name = "social_security", description = "Social Security statement import (roadmap Phase 6): claiming-age benefit estimates"),
+        (name = "insights", description = "Personalized insights & anomaly detection (roadmap Phase 6): ACA/IRMAA/RMD reminders, cash-flow and spending anomalies, and sequence-of-return risk"),
+        (name = "collaboration", description = "Collaboration (roadmap Phase 6): grant spouses full access and advisors read-only access to your plan"),
         (name = "health", description = "Service health"),
     )
 )]

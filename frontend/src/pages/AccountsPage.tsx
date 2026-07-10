@@ -2,13 +2,9 @@ import { useEffect, useState } from "react";
 import { api } from "../api/client";
 import type { Account, AccountRequest } from "../api/types";
 import { AccountForm } from "../components/AccountForm";
+import { PlaidConnections } from "../components/PlaidConnections";
 import { Alert, Button, Card } from "../components/ui";
-import {
-  accountTypeLabel,
-  categoryLabel,
-  formatCurrency,
-  ownerLabel,
-} from "../data/accounts";
+import { accountTypeLabel, categoryLabel, formatCurrency, ownerLabel } from "../data/accounts";
 
 type Editing = { mode: "new" } | { mode: "edit"; account: Account } | null;
 
@@ -85,8 +81,8 @@ export function AccountsPage() {
       {accounts.length === 0 && !editing && (
         <Card>
           <p className="muted center">
-            No accounts yet. Add your brokerage, IRA, 401(k), Roth, HSA, and other
-            accounts to build your plan.
+            No accounts yet. Add your brokerage, IRA, 401(k), Roth, HSA, and other accounts to build
+            your plan.
           </p>
         </Card>
       )}
@@ -118,6 +114,10 @@ export function AccountsPage() {
           ))}
         </div>
       )}
+
+      <Card title="Bank connections" collapsible defaultOpen={false}>
+        <PlaidConnections />
+      </Card>
     </div>
   );
 }

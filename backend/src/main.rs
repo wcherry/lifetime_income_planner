@@ -4,10 +4,12 @@ mod config;
 mod db;
 mod error;
 mod handlers;
+mod insights;
 mod irmaa;
 mod models;
 mod monte_carlo;
 mod openapi;
+mod plaid_client;
 mod projection;
 mod reconciliation;
 mod schema;
@@ -85,6 +87,25 @@ async fn main() -> std::io::Result<()> {
                     .service(handlers::quarterly_review::list_quarterly_reviews)
                     .service(handlers::quarterly_review::complete_quarterly_review)
                     .service(handlers::reports::get_tax_summary_csv)
+                    .service(handlers::plaid::sandbox_connect)
+                    .service(handlers::plaid::list_items)
+                    .service(handlers::plaid::sync_item)
+                    .service(handlers::plaid::delete_item)
+                    .service(handlers::tax_document::import_tax_document)
+                    .service(handlers::tax_document::list_tax_documents)
+                    .service(handlers::tax_document::tax_document_year_summary)
+                    .service(handlers::tax_document::delete_tax_document)
+                    .service(handlers::social_security_estimate::import_estimate)
+                    .service(handlers::social_security_estimate::list_estimates)
+                    .service(handlers::social_security_estimate::delete_estimate)
+                    .service(handlers::insights::list_insights)
+                    .service(handlers::collaborator::invite_collaborator)
+                    .service(handlers::collaborator::list_collaborators)
+                    .service(handlers::collaborator::list_invitations)
+                    .service(handlers::collaborator::accept_invitation)
+                    .service(handlers::collaborator::decline_invitation)
+                    .service(handlers::collaborator::revoke_collaborator)
+                    .service(handlers::collaborator::list_contexts)
                     .service(handlers::plan::list_plans)
                     .service(handlers::plan::compare_plans)
                     .service(handlers::plan::save_plan)

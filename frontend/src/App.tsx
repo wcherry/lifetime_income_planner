@@ -1,5 +1,13 @@
 import { Navigate, Route, Routes, Link, NavLink } from "react-router-dom";
-import type { ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
+import {
+  api,
+  getContextLabel,
+  getContextUser,
+  isReadOnlyContext,
+  setContextUser,
+} from "./api/client";
+import type { CollaborationContext } from "./api/types";
 import { AuthProvider, useAuth } from "./auth/AuthContext";
 import { LoginPage } from "./pages/LoginPage";
 import { RegisterPage } from "./pages/RegisterPage";
@@ -13,6 +21,10 @@ import { ProjectionPage } from "./pages/ProjectionPage";
 import { PlansPage } from "./pages/PlansPage";
 import { ComparisonPage } from "./pages/ComparisonPage";
 import { QuarterlyReviewPage } from "./pages/QuarterlyReviewPage";
+import { TaxDocumentsPage } from "./pages/TaxDocumentsPage";
+import { SocialSecurityPage } from "./pages/SocialSecurityPage";
+import { InsightsPage } from "./pages/InsightsPage";
+import { CollaborationPage } from "./pages/CollaborationPage";
 
 function RequireAuth({ children }: { children: ReactNode }) {
   const { user, loading } = useAuth();
@@ -26,6 +38,40 @@ function RedirectIfAuthed({ children }: { children: ReactNode }) {
   if (loading) return <p className="muted center">Loading…</p>;
   if (user) return <Navigate to="/" replace />;
   return <>{children}</>;
+}
+
+function ContextSwitcher({ selfId }: { selfId: string }) {
+  const [contexts, setContexts] = useState<CollaborationContext[]>([]);
+
+  useEffect(() => {
+    api
+      .listCollaborationContexts()
+      .then(setContexts)
+      .catch(() => setContexts([]));
+  }, []);
+
+  if (contexts.length <= 1) return null;
+
+  const active = getContextUser() ?? selfId;
+
+  return (
+    <select
+      className="input context-switcher"
+      value={active}
+      onChange={(e) => {
+        const next = e.target.value;
+        const chosen = contexts.find((c) => c.user_id === next);
+        setContextUser(next === selfId ? null : next, chosen?.role, chosen?.label);
+        window.location.reload();
+      }}
+    >
+      {contexts.map((ctx) => (
+        <option key={ctx.user_id} value={ctx.user_id}>
+          {ctx.label}
+        </option>
+      ))}
+    </select>
+  );
 }
 
 function Header() {
@@ -68,9 +114,22 @@ function Header() {
           <NavLink to="/quarterly-review" className={({ isActive }) => (isActive ? "active" : "")}>
             Review
           </NavLink>
+          <NavLink to="/insights" className={({ isActive }) => (isActive ? "active" : "")}>
+            Insights
+          </NavLink>
+          <NavLink to="/tax-documents" className={({ isActive }) => (isActive ? "active" : "")}>
+            Tax docs
+          </NavLink>
+          <NavLink to="/social-security" className={({ isActive }) => (isActive ? "active" : "")}>
+            Social Security
+          </NavLink>
+          <NavLink to="/collaboration" className={({ isActive }) => (isActive ? "active" : "")}>
+            Collaboration
+          </NavLink>
         </nav>
       </div>
       <nav className="header-right">
+        <ContextSwitcher selfId={user.id} />
         <span className="muted">{user.email}</span>
         <button className="btn btn-ghost" onClick={logout}>
           Log out
@@ -80,10 +139,22 @@ function Header() {
   );
 }
 
+function ReadOnlyBanner() {
+  const { user } = useAuth();
+  if (!user || !isReadOnlyContext()) return null;
+  const label = getContextLabel() ?? "this plan";
+  return (
+    <div className="alert alert-error read-only-banner">
+      Viewing {label} as an advisor — read-only. Changes won't be saved.
+    </div>
+  );
+}
+
 function Shell() {
   return (
     <>
       <Header />
+      <ReadOnlyBanner />
       <main className="app-main">
         <Routes>
           <Route
@@ -187,6 +258,38 @@ function Shell() {
             element={
               <RequireAuth>
                 <QuarterlyReviewPage />
+              </RequireAuth>
+            }
+          />
+          <Route
+            path="/insights"
+            element={
+              <RequireAuth>
+                <InsightsPage />
+              </RequireAuth>
+            }
+          />
+          <Route
+            path="/tax-documents"
+            element={
+              <RequireAuth>
+                <TaxDocumentsPage />
+              </RequireAuth>
+            }
+          />
+          <Route
+            path="/social-security"
+            element={
+              <RequireAuth>
+                <SocialSecurityPage />
+              </RequireAuth>
+            }
+          />
+          <Route
+            path="/collaboration"
+            element={
+              <RequireAuth>
+                <CollaborationPage />
               </RequireAuth>
             }
           />

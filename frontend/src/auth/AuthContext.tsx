@@ -7,7 +7,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { api, clearToken, getToken, setToken } from "../api/client";
+import { api, clearToken, getToken, setContextUser, setToken } from "../api/client";
 import type { User } from "../api/types";
 
 interface AuthContextValue {
@@ -50,17 +50,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const login = useCallback(async (email: string, password: string) => {
     const res = await api.login(email, password);
     setToken(res.token);
+    setContextUser(null);
     setUser(res.user);
   }, []);
 
   const register = useCallback(async (email: string, password: string) => {
     const res = await api.register(email, password);
     setToken(res.token);
+    setContextUser(null);
     setUser(res.user);
   }, []);
 
   const logout = useCallback(() => {
     clearToken();
+    setContextUser(null);
     setUser(null);
   }, []);
 

@@ -5,10 +5,17 @@ import type {
   AssumptionsRequest,
   AuthResponse,
   ClonePlanRequest,
+  Collaborator,
+  CollaborationContext,
   CompareScenariosRequest,
   CompleteQuarterlyReviewRequest,
+  ImportSocialSecurityEstimateRequest,
+  ImportTaxDocumentRequest,
   IncomeRequest,
   IncomeSource,
+  Insight,
+  Invitation,
+  InviteCollaboratorRequest,
   LifeEvent,
   LifeEventRequest,
   MonteCarloRequest,
@@ -16,6 +23,9 @@ import type {
   OptimizeRequest,
   OptimizeResponse,
   Plan,
+  PlaidItem,
+  PlaidSandboxConnectRequest,
+  PlaidSyncResponse,
   PlanVersion,
   Profile,
   Projection,
@@ -23,14 +33,20 @@ import type {
   QuarterlyReviewOverview,
   SavePlanRequest,
   ScenarioComparison,
+  SocialSecurityEstimate,
   SpendingItem,
   SpendingRequest,
+  TaxDocument,
+  TaxDocumentYearSummary,
   UpsertProfileRequest,
   User,
   WhatIfRequest,
 } from "./types";
 
 const TOKEN_KEY = "lip_token";
+const CONTEXT_KEY = "lip_context_user";
+const CONTEXT_ROLE_KEY = "lip_context_role";
+const CONTEXT_LABEL_KEY = "lip_context_label";
 
 export function getToken(): string | null {
   return localStorage.getItem(TOKEN_KEY);
@@ -42,6 +58,46 @@ export function setToken(token: string): void {
 
 export function clearToken(): void {
   localStorage.removeItem(TOKEN_KEY);
+}
+
+/**
+ * Collaboration (Phase 6, feature 7): the id of the owner whose data the
+ * caller is currently acting as, or `null` to act as themselves. Sent as the
+ * `X-Context-User` header on every request.
+ */
+export function getContextUser(): string | null {
+  return localStorage.getItem(CONTEXT_KEY);
+}
+
+/**
+ * `role`/`label` mirror the chosen `CollaborationContext` so the UI can show
+ * a "read-only" notice without an extra round trip. The backend is the real
+ * enforcement point (`AuthUser` rejects advisor writes regardless of what's
+ * cached here); this is purely to keep the UI from offering doomed actions.
+ */
+export function setContextUser(userId: string | null, role?: string, label?: string): void {
+  if (userId) {
+    localStorage.setItem(CONTEXT_KEY, userId);
+    if (role) localStorage.setItem(CONTEXT_ROLE_KEY, role);
+    if (label) localStorage.setItem(CONTEXT_LABEL_KEY, label);
+  } else {
+    localStorage.removeItem(CONTEXT_KEY);
+    localStorage.removeItem(CONTEXT_ROLE_KEY);
+    localStorage.removeItem(CONTEXT_LABEL_KEY);
+  }
+}
+
+export function getContextRole(): string | null {
+  return localStorage.getItem(CONTEXT_ROLE_KEY);
+}
+
+export function getContextLabel(): string | null {
+  return localStorage.getItem(CONTEXT_LABEL_KEY);
+}
+
+/** True when the active context is a read-only advisor grant. */
+export function isReadOnlyContext(): boolean {
+  return getContextUser() !== null && getContextRole() === "advisor";
 }
 
 /** Thrown for any non-2xx API response; `message` is the server's error text. */
@@ -59,6 +115,8 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
   if (body !== undefined) headers["Content-Type"] = "application/json";
   const token = getToken();
   if (token) headers["Authorization"] = `Bearer ${token}`;
+  const contextUser = getContextUser();
+  if (contextUser) headers["X-Context-User"] = contextUser;
 
   const res = await fetch(`/api${path}`, {
     method,
@@ -91,6 +149,8 @@ async function downloadTaxSummaryCsv(): Promise<void> {
   const headers: Record<string, string> = {};
   const token = getToken();
   if (token) headers["Authorization"] = `Bearer ${token}`;
+  const contextUser = getContextUser();
+  if (contextUser) headers["X-Context-User"] = contextUser;
 
   const res = await fetch("/api/reports/tax-summary.csv", { headers });
   if (!res.ok) {
@@ -214,4 +274,61 @@ export const api = {
     quarter: number,
     payload: CompleteQuarterlyReviewRequest,
   ) => request<QuarterlyReview>("POST", `/quarterly-reviews/${year}/${quarter}/complete`, payload),
+
+  // --- Phase 6: financial account aggregation (Plaid) ---
+
+  connectPlaidSandbox: (payload: PlaidSandboxConnectRequest) =>
+    request<PlaidItem>("POST", "/plaid/sandbox-connect", payload),
+
+  listPlaidItems: () => request<PlaidItem[]>("GET", "/plaid/items"),
+
+  syncPlaidItem: (id: string) => request<PlaidSyncResponse>("POST", `/plaid/items/${id}/sync`),
+
+  deletePlaidItem: (id: string) => request<void>("DELETE", `/plaid/items/${id}`),
+
+  // --- Phase 6: tax form imports ---
+
+  importTaxDocument: (payload: ImportTaxDocumentRequest) =>
+    request<TaxDocument>("POST", "/tax-documents/import", payload),
+
+  listTaxDocuments: (year?: number) =>
+    request<TaxDocument[]>("GET", year ? `/tax-documents?year=${year}` : "/tax-documents"),
+
+  getTaxDocumentYearSummary: (year: number) =>
+    request<TaxDocumentYearSummary>("GET", `/tax-documents/summary/${year}`),
+
+  deleteTaxDocument: (id: string) => request<void>("DELETE", `/tax-documents/${id}`),
+
+  // --- Phase 6: Social Security statement import ---
+
+  importSocialSecurityEstimate: (payload: ImportSocialSecurityEstimateRequest) =>
+    request<SocialSecurityEstimate>("POST", "/social-security-estimates/import", payload),
+
+  listSocialSecurityEstimates: () =>
+    request<SocialSecurityEstimate[]>("GET", "/social-security-estimates"),
+
+  deleteSocialSecurityEstimate: (id: string) =>
+    request<void>("DELETE", `/social-security-estimates/${id}`),
+
+  // --- Phase 6: personalized insights & anomaly detection ---
+
+  getInsights: () => request<Insight[]>("GET", "/insights"),
+
+  // --- Phase 6: collaboration (spouses & advisors) ---
+
+  inviteCollaborator: (payload: InviteCollaboratorRequest) =>
+    request<Collaborator>("POST", "/collaborators", payload),
+
+  listCollaborators: () => request<Collaborator[]>("GET", "/collaborators"),
+
+  listInvitations: () => request<Invitation[]>("GET", "/collaborators/invitations"),
+
+  acceptInvitation: (id: string) => request<Collaborator>("POST", `/collaborators/${id}/accept`),
+
+  declineInvitation: (id: string) => request<Collaborator>("POST", `/collaborators/${id}/decline`),
+
+  revokeCollaborator: (id: string) => request<void>("DELETE", `/collaborators/${id}`),
+
+  listCollaborationContexts: () =>
+    request<CollaborationContext[]>("GET", "/collaborators/contexts"),
 };

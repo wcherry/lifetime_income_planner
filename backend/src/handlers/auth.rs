@@ -139,10 +139,13 @@ pub async fn login(
 #[get("/auth/me")]
 pub async fn me(pool: web::Data<DbPool>, auth: AuthUser) -> AppResult<HttpResponse> {
     let pool = pool.clone();
+    // Always the authenticated identity, never the active collaboration
+    // context — "who am I" shouldn't change when acting on someone else's data.
+    let caller_id = auth.caller_id.clone();
     let user = web::block(move || -> AppResult<User> {
         let mut conn = pool.get()?;
         let user = users::table
-            .filter(users::id.eq(&auth.user_id))
+            .filter(users::id.eq(&caller_id))
             .select(User::as_select())
             .first(&mut conn)?;
         Ok(user)
