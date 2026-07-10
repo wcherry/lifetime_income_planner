@@ -6,6 +6,7 @@ import type {
   AuthResponse,
   ClonePlanRequest,
   CompareScenariosRequest,
+  CompleteQuarterlyReviewRequest,
   IncomeRequest,
   IncomeSource,
   LifeEvent,
@@ -18,6 +19,8 @@ import type {
   PlanVersion,
   Profile,
   Projection,
+  QuarterlyReview,
+  QuarterlyReviewOverview,
   SavePlanRequest,
   ScenarioComparison,
   SpendingItem,
@@ -203,4 +206,12 @@ export const api = {
   loadPlan: (id: string) => request<Plan>("POST", `/plans/${id}/load`),
 
   deletePlan: (id: string) => request<void>("DELETE", `/plans/${id}`),
+
+  getQuarterlyReviews: () => request<QuarterlyReviewOverview>("GET", "/quarterly-reviews"),
+
+  completeQuarterlyReview: (
+    year: number,
+    quarter: number,
+    payload: CompleteQuarterlyReviewRequest,
+  ) => request<QuarterlyReview>("POST", `/quarterly-reviews/${year}/${quarter}/complete`, payload),
 };

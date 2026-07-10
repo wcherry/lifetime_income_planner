@@ -104,6 +104,7 @@ function year(overrides: Partial<YearProjection>): YearProjection {
     aca: emptyAca,
     irmaa: emptyIrmaa,
     ending_balance: 0,
+    account_balances: [],
     shortfall: 0,
     ...overrides,
   };

@@ -138,6 +138,7 @@ mod tests {
             aca: YearAca::default(),
             irmaa: YearIrmaa::default(),
             ending_balance: 0.0,
+            account_balances: vec![],
             shortfall: 0.0,
         }
     }

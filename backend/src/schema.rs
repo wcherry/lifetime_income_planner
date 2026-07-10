@@ -51,8 +51,8 @@ diesel::table! {
         roth_conversion_ceiling -> Double,
         roth_conversion_start_year -> Nullable<Integer>,
         roth_conversion_end_year -> Nullable<Integer>,
-        aca_benchmark_annual_premium -> Double,
         withdrawal_strategy -> Text,
+        aca_benchmark_annual_premium -> Double,
         medicare_part_b_annual_premium -> Double,
     }
 }
@@ -151,6 +151,25 @@ diesel::table! {
 }
 
 diesel::table! {
+    quarterly_reviews (id) {
+        id -> Text,
+        user_id -> Text,
+        year -> Integer,
+        quarter -> Integer,
+        planned_income -> Double,
+        planned_spending -> Double,
+        planned_tax -> Double,
+        planned_withdrawal -> Double,
+        actual_income -> Double,
+        actual_spending -> Double,
+        actual_tax -> Double,
+        actual_balances -> Text,
+        notes -> Nullable<Text>,
+        created_at -> Timestamp,
+    }
+}
+
+diesel::table! {
     spending_items (id) {
         id -> Text,
         user_id -> Text,
@@ -229,6 +248,7 @@ diesel::joinable!(plan_snapshots -> plans (plan_id));
 diesel::joinable!(plan_snapshots -> users (user_id));
 diesel::joinable!(plans -> users (user_id));
 diesel::joinable!(profiles -> users (user_id));
+diesel::joinable!(quarterly_reviews -> users (user_id));
 diesel::joinable!(spending_items -> users (user_id));
 
 diesel::allow_tables_to_appear_in_same_query!(
@@ -242,6 +262,7 @@ diesel::allow_tables_to_appear_in_same_query!(
     plan_snapshots,
     plans,
     profiles,
+    quarterly_reviews,
     spending_items,
     state_tax_brackets,
     state_tax_params,

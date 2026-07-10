@@ -12,6 +12,7 @@ import { AssumptionsPage } from "./pages/AssumptionsPage";
 import { ProjectionPage } from "./pages/ProjectionPage";
 import { PlansPage } from "./pages/PlansPage";
 import { ComparisonPage } from "./pages/ComparisonPage";
+import { QuarterlyReviewPage } from "./pages/QuarterlyReviewPage";
 
 function RequireAuth({ children }: { children: ReactNode }) {
   const { user, loading } = useAuth();
@@ -63,6 +64,9 @@ function Header() {
           </NavLink>
           <NavLink to="/compare" className={({ isActive }) => (isActive ? "active" : "")}>
             Compare
+          </NavLink>
+          <NavLink to="/quarterly-review" className={({ isActive }) => (isActive ? "active" : "")}>
+            Review
           </NavLink>
         </nav>
       </div>
@@ -175,6 +179,14 @@ function Shell() {
             element={
               <RequireAuth>
                 <ComparisonPage />
+              </RequireAuth>
+            }
+          />
+          <Route
+            path="/quarterly-review"
+            element={
+              <RequireAuth>
+                <QuarterlyReviewPage />
               </RequireAuth>
             }
           />

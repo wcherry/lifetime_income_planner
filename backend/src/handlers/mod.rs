@@ -8,5 +8,6 @@ pub mod monte_carlo;
 pub mod plan;
 pub mod profile;
 pub mod projection;
+pub mod quarterly_review;
 pub mod reports;
 pub mod spending;

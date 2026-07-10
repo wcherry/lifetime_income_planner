@@ -266,14 +266,10 @@ export function ProjectionPage() {
       />
 
       {/* ACA subsidy for the current year (Phase 3, feature 1) */}
-      {showAca && currentAca && (
-        <AcaSubsidyCard aca={currentAca} year={projection.start_year} />
-      )}
+      {showAca && currentAca && <AcaSubsidyCard aca={currentAca} year={projection.start_year} />}
 
       {/* Medicare IRMAA surcharge for the current year (Phase 3, feature 4) */}
-      {showIrmaa && currentIrmaa && (
-        <IrmaaCard irmaa={currentIrmaa} year={projection.start_year} />
-      )}
+      {showIrmaa && currentIrmaa && <IrmaaCard irmaa={currentIrmaa} year={projection.start_year} />}
 
       {/* Annual projection table (Phase 1, feature 8) */}
       <Card title="Year-by-year projection" collapsible>
@@ -326,10 +322,13 @@ export function ProjectionPage() {
                         {y.roth_conversion > 0 ? formatCurrency(y.roth_conversion) : "—"}
                       </td>
                     )}
-                    <td className="num" title={`Effective rate ${formatRate(y.tax.effective_rate)}`}>
+                    <td
+                      className="num"
+                      title={`Effective rate ${formatRate(y.tax.effective_rate)}`}
+                    >
                       {formatCurrency(y.taxes)}
                     </td>
-                    <td className="num">{formatCurrency(y.ending_balance)}</td>
+                    <EndBalanceCell year={y} />
                     <td>
                       {(y.life_events.length > 0 || y.milestones.length > 0 || rmdExcess > 0) && (
                         <span className="event-badges">
@@ -370,6 +369,63 @@ export function ProjectionPage() {
         </div>
       </Card>
     </div>
+  );
+}
+
+/**
+ * The "End" balance cell in the annual projection table: a toggle button that
+ * reveals a per-account breakdown (name, ending balance, and this year's
+ * change) for that row.
+ */
+function EndBalanceCell({ year }: { year: YearProjection }) {
+  const [open, setOpen] = useState(false);
+  const accounts = year.account_balances;
+
+  return (
+    <td className="num end-balance-cell">
+      <button
+        type="button"
+        className="end-balance-toggle"
+        onClick={() => setOpen((o) => !o)}
+        aria-expanded={open}
+        disabled={accounts.length === 0}
+      >
+        {formatCurrency(year.ending_balance)}
+        {accounts.length > 0 && (
+          <span
+            className={`end-balance-chevron${open ? " end-balance-chevron-open" : ""}`}
+            aria-hidden="true"
+          >
+            ▾
+          </span>
+        )}
+      </button>
+      {open && accounts.length > 0 && (
+        <div className="account-balance-dropdown">
+          <ul className="account-balance-list">
+            {accounts.map((a) => (
+              <li className="account-balance-row" key={a.account_id}>
+                <span className="account-balance-name">{a.account_name}</span>
+                <span className="account-balance-amt">{formatCurrency(a.ending_balance)}</span>
+                <span
+                  className={`account-balance-delta ${
+                    a.change > 0
+                      ? "account-balance-delta-up"
+                      : a.change < 0
+                        ? "account-balance-delta-down"
+                        : "account-balance-delta-flat"
+                  }`}
+                >
+                  {a.change > 0 && "▲ "}
+                  {a.change < 0 && "▼ "}
+                  {formatSignedCurrency(a.change)}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </td>
   );
 }
 
@@ -1137,7 +1193,9 @@ function TaxReportCard({
                 <td>{y.primary_age}</td>
                 {showWithdrawalOrder && (
                   <td>
-                    {y.withdrawal_order === "tax_deferred_first" ? "Tax-deferred first" : "Taxable first"}
+                    {y.withdrawal_order === "tax_deferred_first"
+                      ? "Tax-deferred first"
+                      : "Taxable first"}
                   </td>
                 )}
                 <td className="num">{formatCurrency(y.tax.ordinary_income)}</td>
@@ -1175,8 +1233,8 @@ function AcaSubsidyCard({ aca, year }: { aca: YearAca; year: number }) {
     <Card title={`ACA health insurance subsidy · ${year}`}>
       <p className="muted">
         The premium tax credit caps what you pay for the benchmark silver plan based on your income
-        relative to the Federal Poverty Line. Withdrawals and Roth conversions raise your MAGI, which
-        shrinks the credit — the tradeoff the planner makes visible.
+        relative to the Federal Poverty Line. Withdrawals and Roth conversions raise your MAGI,
+        which shrinks the credit — the tradeoff the planner makes visible.
       </p>
       {!aca.eligible ? (
         <p className="muted center">{notEligibleReason}</p>
@@ -1236,8 +1294,14 @@ function IrmaaCard({ irmaa, year }: { irmaa: YearIrmaa; year: number }) {
       ) : (
         <dl className="tax-lines aca-lines">
           <TaxLine label={`MAGI in ${irmaa.lookback_year}`} value={irmaa.lookback_magi} />
-          <TaxLine label="Part B surcharge (per person/mo)" value={irmaa.part_b_surcharge_monthly} />
-          <TaxLine label="Part D surcharge (per person/mo)" value={irmaa.part_d_surcharge_monthly} />
+          <TaxLine
+            label="Part B surcharge (per person/mo)"
+            value={irmaa.part_b_surcharge_monthly}
+          />
+          <TaxLine
+            label="Part D surcharge (per person/mo)"
+            value={irmaa.part_d_surcharge_monthly}
+          />
           <div className="tax-line">
             <dt>Enrolled household members</dt>
             <dd>{irmaa.enrolled_count}</dd>

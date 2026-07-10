@@ -177,6 +177,22 @@ pub struct Milestone {
     pub age: i32,
 }
 
+/// One account's balance movement within a single projection year, for the
+/// per-account breakdown shown alongside each year's ending balance.
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct YearAccountBalance {
+    pub account_id: String,
+    pub account_name: String,
+    pub category: String,
+    /// Balance at the start of the year.
+    pub starting_balance: f64,
+    /// Balance at the end of the year (after growth, withdrawals, and any
+    /// Roth conversion or reinvestment).
+    pub ending_balance: f64,
+    /// Signed change over the year (`ending_balance - starting_balance`).
+    pub change: f64,
+}
+
 /// One calendar year of the projection.
 #[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct YearProjection {
@@ -240,6 +256,9 @@ pub struct YearProjection {
     pub irmaa: YearIrmaa,
     /// Total account balance at the end of the year.
     pub ending_balance: f64,
+    /// Per-account balance breakdown for the year (starting balance, ending
+    /// balance, and the signed change), one entry per account.
+    pub account_balances: Vec<YearAccountBalance>,
     /// Spending (or taxes) that could not be funded because accounts were exhausted.
     pub shortfall: f64,
 }

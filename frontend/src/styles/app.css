@@ -38,6 +38,7 @@ a {
 .app-header {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   justify-content: space-between;
   padding: 1rem 1.5rem;
   border-bottom: 1px solid var(--border);
@@ -53,12 +54,14 @@ a {
 .header-left {
   display: flex;
   align-items: center;
-  gap: 1.5rem;
+  flex-wrap: wrap;
+  gap: 0.75rem 1.5rem;
 }
 
 .main-nav {
   display: flex;
-  gap: 1rem;
+  flex-wrap: wrap;
+  gap: 0.5rem 1rem;
 }
 
 .main-nav a {
@@ -68,6 +71,7 @@ a {
   font-weight: 600;
   padding: 0.25rem 0;
   border-bottom: 2px solid transparent;
+  white-space: nowrap;
 }
 
 .main-nav a.active {
@@ -79,6 +83,7 @@ a {
   display: flex;
   align-items: center;
   gap: 1rem;
+  flex-shrink: 0;
 }
 
 .app-main {
@@ -744,6 +749,102 @@ form {
 .proj-table .row-good td {
   background: var(--success-bg);
   color: var(--success-text);
+}
+
+/* Year-by-year table — per-account end-balance breakdown */
+.end-balance-cell {
+  position: relative;
+}
+
+.end-balance-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  background: none;
+  border: none;
+  padding: 0;
+  margin: 0;
+  font: inherit;
+  font-variant-numeric: tabular-nums;
+  color: inherit;
+  cursor: pointer;
+}
+
+.end-balance-toggle:disabled {
+  cursor: default;
+}
+
+.end-balance-chevron {
+  font-size: 0.7rem;
+  color: var(--muted);
+  transition: transform 0.15s ease;
+}
+
+.end-balance-chevron-open {
+  transform: rotate(180deg);
+}
+
+.account-balance-dropdown {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  z-index: 5;
+  margin-top: 0.25rem;
+  min-width: 15rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 0.5rem;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+  white-space: nowrap;
+}
+
+.account-balance-list {
+  list-style: none;
+  margin: 0;
+  padding: 0.4rem;
+}
+
+.account-balance-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.35rem 0.5rem;
+  font-size: 0.82rem;
+  font-weight: 400;
+  text-transform: none;
+  letter-spacing: normal;
+}
+
+.account-balance-row + .account-balance-row {
+  border-top: 1px solid var(--border);
+}
+
+.account-balance-name {
+  color: var(--muted);
+}
+
+.account-balance-amt {
+  font-variant-numeric: tabular-nums;
+}
+
+.account-balance-delta {
+  font-variant-numeric: tabular-nums;
+  font-size: 0.78rem;
+  min-width: 5rem;
+  text-align: right;
+}
+
+.account-balance-delta-up {
+  color: var(--success-text);
+}
+
+.account-balance-delta-down {
+  color: var(--error-text);
+}
+
+.account-balance-delta-flat {
+  color: var(--muted);
 }
 
 /* Net worth chart */

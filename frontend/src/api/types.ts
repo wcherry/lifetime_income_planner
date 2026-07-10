@@ -354,6 +354,15 @@ export interface Milestone {
   age: number;
 }
 
+export interface YearAccountBalance {
+  account_id: string;
+  account_name: string;
+  category: AccountCategory;
+  starting_balance: number;
+  ending_balance: number;
+  change: number;
+}
+
 export interface YearProjection {
   year: number;
   primary_age: number;
@@ -381,6 +390,7 @@ export interface YearProjection {
   aca: YearAca;
   irmaa: YearIrmaa;
   ending_balance: number;
+  account_balances: YearAccountBalance[];
   shortfall: number;
 }
 
@@ -570,4 +580,110 @@ export interface UpsertProfileRequest {
   spouse_last_name?: string | null;
   spouse_date_of_birth?: string | null;
   spouse_life_expectancy?: number | null;
+}
+
+/**
+ * One account's actual balance movement across a reviewed quarter.
+ * `starting_balance` is the account's live balance immediately before the
+ * review was applied — captured at completion time since it's otherwise
+ * unrecoverable once completing the review overwrites the live balance.
+ */
+export interface ReviewAccountBalance {
+  account_id: string;
+  account_name: string;
+  category: AccountCategory;
+  starting_balance: number;
+  ending_balance: number;
+}
+
+/** One account's actual ending balance, as submitted in a review completion request. */
+export interface ActualAccountBalanceInput {
+  account_id: string;
+  ending_balance: number;
+}
+
+/** Request body for completing a quarterly review. */
+export interface CompleteQuarterlyReviewRequest {
+  actual_income: number;
+  actual_spending: number;
+  actual_tax: number;
+  actual_balances: ActualAccountBalanceInput[];
+  notes?: string | null;
+}
+
+/** A derived reconciliation of a quarter's actual cash flow against its actual account balance changes. */
+export interface ReconciliationSummary {
+  total_starting_balance: number;
+  total_ending_balance: number;
+  net_balance_change: number;
+  /** `actual_income - actual_spending - actual_tax`. */
+  net_cash_flow: number;
+  /** `net_balance_change - net_cash_flow` — the portion of the balance change not explained by cash flow, i.e. investment gain/loss. */
+  implied_investment_gain: number;
+}
+
+/**
+ * A completed quarterly review: planned vs. actual figures, the variance
+ * between them, the per-account balance detail, and the derived
+ * reconciliation. Used both for `history` entries and as the response of
+ * completing a review.
+ */
+export interface QuarterlyReview {
+  id: string;
+  year: number;
+  quarter: number;
+  /** Human-friendly label, e.g. "2026 Q1". */
+  label: string;
+  planned_income: number;
+  planned_spending: number;
+  planned_tax: number;
+  planned_withdrawal: number;
+  actual_income: number;
+  actual_spending: number;
+  actual_tax: number;
+  /** `actual_income - planned_income`. */
+  income_variance: number;
+  /** `actual_spending - planned_spending`. */
+  spending_variance: number;
+  /** `actual_tax - planned_tax`. */
+  tax_variance: number;
+  balances: ReviewAccountBalance[];
+  reconciliation: ReconciliationSummary;
+  notes: string | null;
+  created_at: string;
+}
+
+/** An account's live balance, as shown for a quarter that still needs review. */
+export interface DueAccountBalance {
+  account_id: string;
+  account_name: string;
+  category: AccountCategory;
+  current_balance: number;
+}
+
+/**
+ * A quarter that has not yet been reviewed, with the planned figures the
+ * user will be comparing their actuals against.
+ */
+export interface DueQuarterlyReview {
+  year: number;
+  quarter: number;
+  /** Human-friendly label, e.g. "2026 Q1". */
+  label: string;
+  /**
+   * Whether this is the quarter currently in progress (as opposed to a past
+   * quarter that was simply never reviewed).
+   */
+  is_current: boolean;
+  planned_income: number;
+  planned_spending: number;
+  planned_tax: number;
+  planned_withdrawal: number;
+  accounts: DueAccountBalance[];
+}
+
+/** Response for `GET /quarterly-reviews`: what still needs review, and the history of what's already been completed. */
+export interface QuarterlyReviewOverview {
+  due: DueQuarterlyReview[];
+  history: QuarterlyReview[];
 }

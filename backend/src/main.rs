@@ -9,6 +9,7 @@ mod models;
 mod monte_carlo;
 mod openapi;
 mod projection;
+mod reconciliation;
 mod schema;
 mod tax;
 
@@ -81,6 +82,8 @@ async fn main() -> std::io::Result<()> {
                     .service(handlers::projection::what_if_projection)
                     .service(handlers::projection::optimize_projection)
                     .service(handlers::monte_carlo::run_monte_carlo_endpoint)
+                    .service(handlers::quarterly_review::list_quarterly_reviews)
+                    .service(handlers::quarterly_review::complete_quarterly_review)
                     .service(handlers::reports::get_tax_summary_csv)
                     .service(handlers::plan::list_plans)
                     .service(handlers::plan::compare_plans)

@@ -19,7 +19,8 @@ use crate::irmaa::{compute_irmaa, IrmaaFilingGroup, IrmaaInput, IrmaaTables};
 use crate::models::{
     Account, EstimatedTaxPayment, EstimatedTaxes, IncomeSource, LifeEvent, LifeEventOccurrence,
     Milestone, Profile, ProjectionAssumptions, ProjectionResponse, ProjectionSummary,
-    QuarterProjection, QuarterWithdrawal, SpendingItem, YearAca, YearIrmaa, YearProjection, YearTax,
+    QuarterProjection, QuarterWithdrawal, SpendingItem, YearAca, YearAccountBalance, YearIrmaa,
+    YearProjection, YearTax,
 };
 use crate::tax::{compute_taxes, FilingStatusKind, TaxInput, TaxResult, TaxTables};
 
@@ -902,6 +903,20 @@ fn run_projection_inner(
         }
 
         let ending_balance: f64 = balances.iter().sum();
+        let account_balances: Vec<YearAccountBalance> = inp
+            .accounts
+            .iter()
+            .zip(starting_account_balances.iter())
+            .zip(balances.iter())
+            .map(|((acc, &start), &end)| YearAccountBalance {
+                account_id: acc.id.clone(),
+                account_name: acc.name.clone(),
+                category: acc.category.clone(),
+                starting_balance: round2(start),
+                ending_balance: round2(end),
+                change: round2(end - start),
+            })
+            .collect();
 
         let ordinary_income_total =
             ordinary_income_sources + taxable_life_inflow + roth_conversion + plan.tax_deferred;
@@ -987,6 +1002,7 @@ fn run_projection_inner(
                 total_surcharge: round2(irmaa_surcharge),
             },
             ending_balance: round2(ending_balance),
+            account_balances,
             shortfall: round2(shortfall),
         });
     }
