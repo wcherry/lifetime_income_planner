@@ -15,4 +15,5 @@ pub mod quarterly_review;
 pub mod reports;
 pub mod social_security_estimate;
 pub mod spending;
+pub mod spending_tracker;
 pub mod tax_document;

@@ -859,6 +859,7 @@ fn run_projection_inner(
         let mut withdrawals = 0.0;
         let mut contributions = 0.0;
         let mut shortfall = 0.0;
+        let mut withdrawal_sources: Vec<QuarterWithdrawal> = Vec::new();
         for &(idx, take) in &plan.takes {
             let bal_before = balances[idx];
             balances[idx] -= take;
@@ -867,15 +868,17 @@ fn run_projection_inner(
                 // Realizing part of the account reduces basis proportionally.
                 basis[idx] = (basis[idx] * (balances[idx] / bal_before)).max(0.0);
             }
+            let acc = &inp.accounts[idx];
+            let source = QuarterWithdrawal {
+                account_id: acc.id.clone(),
+                account_name: acc.name.clone(),
+                category: acc.category.clone(),
+                amount: take,
+            };
             if year == start_year {
-                let acc = &inp.accounts[idx];
-                first_year_withdrawals.push(QuarterWithdrawal {
-                    account_id: acc.id.clone(),
-                    account_name: acc.name.clone(),
-                    category: acc.category.clone(),
-                    amount: take,
-                });
+                first_year_withdrawals.push(source.clone());
             }
+            withdrawal_sources.push(source);
         }
         if plan.shortfall > 0.01 {
             shortfall = plan.shortfall;
@@ -1004,6 +1007,7 @@ fn run_projection_inner(
             ending_balance: round2(ending_balance),
             account_balances,
             shortfall: round2(shortfall),
+            withdrawal_sources,
         });
     }
 

@@ -316,7 +316,7 @@ export function ProjectionPage() {
                       </td>
                     )}
                     <td className="num">{formatCurrency(y.growth)}</td>
-                    <td className="num">{formatCurrency(y.withdrawals)}</td>
+                    <WithdrawalCell year={y} />
                     {showRoth && (
                       <td className="num">
                         {y.roth_conversion > 0 ? formatCurrency(y.roth_conversion) : "—"}
@@ -420,6 +420,51 @@ function EndBalanceCell({ year }: { year: YearProjection }) {
                   {a.change < 0 && "▼ "}
                   {formatSignedCurrency(a.change)}
                 </span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </td>
+  );
+}
+
+/**
+ * The "Withdrawals" cell in the annual projection table: a toggle button that
+ * reveals which accounts this year's withdrawal was drawn from, and how much
+ * came from each.
+ */
+function WithdrawalCell({ year }: { year: YearProjection }) {
+  const [open, setOpen] = useState(false);
+  const sources = year.withdrawal_sources.filter((s) => s.amount > 0);
+
+  return (
+    <td className="num withdrawal-cell">
+      <button
+        type="button"
+        className="withdrawal-toggle"
+        onClick={() => setOpen((o) => !o)}
+        aria-expanded={open}
+        disabled={sources.length === 0}
+      >
+        {formatCurrency(year.withdrawals)}
+        {sources.length > 0 && (
+          <span
+            className={`withdrawal-chevron${open ? " withdrawal-chevron-open" : ""}`}
+            aria-hidden="true"
+          >
+            ▾
+          </span>
+        )}
+      </button>
+      {open && sources.length > 0 && (
+        <div className="account-balance-dropdown withdrawal-dropdown">
+          <ul className="account-balance-list">
+            {sources.map((s) => (
+              <li className="account-balance-row" key={s.account_id}>
+                <span className="account-balance-name">{s.account_name}</span>
+                <span className="muted quarter-cat">{categoryLabel(s.category)}</span>
+                <span className="account-balance-amt">{formatCurrency(s.amount)}</span>
               </li>
             ))}
           </ul>

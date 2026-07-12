@@ -4,12 +4,16 @@ import type {
   Assumptions,
   AssumptionsRequest,
   AuthResponse,
+  BulkCategorizeRequest,
+  BulkCategorizeResponse,
   ClonePlanRequest,
   Collaborator,
   CollaborationContext,
   CompareScenariosRequest,
   CompleteQuarterlyReviewRequest,
+  CreateManualTransactionRequest,
   ImportSocialSecurityEstimateRequest,
+  ImportSpendingTransactionsRequest,
   ImportTaxDocumentRequest,
   IncomeRequest,
   IncomeSource,
@@ -20,6 +24,7 @@ import type {
   LifeEventRequest,
   MonteCarloRequest,
   MonteCarloResult,
+  NewSpendingTrackerCategoryRequest,
   OptimizeRequest,
   OptimizeResponse,
   Plan,
@@ -33,9 +38,16 @@ import type {
   QuarterlyReviewOverview,
   SavePlanRequest,
   ScenarioComparison,
+  SetTransactionCategoryRequest,
   SocialSecurityEstimate,
   SpendingItem,
   SpendingRequest,
+  SpendingTrackerCategory,
+  SpendingTrackerImportResult,
+  SpendingTrackerMonth,
+  SpendingTrackerQuarterSummary,
+  SpendingTrackerTransaction,
+  SpendingTrackerYearSummary,
   TaxDocument,
   TaxDocumentYearSummary,
   UpsertProfileRequest,
@@ -331,4 +343,53 @@ export const api = {
 
   listCollaborationContexts: () =>
     request<CollaborationContext[]>("GET", "/collaborators/contexts"),
+
+  // --- Spending Tracker: transaction-level CSV import + categorization
+  // (distinct from the planned-budget "Spending" page) ---
+
+  listSpendingTrackerCategories: () =>
+    request<SpendingTrackerCategory[]>("GET", "/spending-tracker/categories"),
+
+  createSpendingTrackerCategory: (payload: NewSpendingTrackerCategoryRequest) =>
+    request<SpendingTrackerCategory>("POST", "/spending-tracker/categories", payload),
+
+  updateSpendingTrackerCategory: (id: string, payload: NewSpendingTrackerCategoryRequest) =>
+    request<SpendingTrackerCategory>("PUT", `/spending-tracker/categories/${id}`, payload),
+
+  deleteSpendingTrackerCategory: (id: string) =>
+    request<void>("DELETE", `/spending-tracker/categories/${id}`),
+
+  importSpendingTransactions: (payload: ImportSpendingTransactionsRequest) =>
+    request<SpendingTrackerImportResult>("POST", "/spending-tracker/import", payload),
+
+  createManualSpendingTrackerTransaction: (payload: CreateManualTransactionRequest) =>
+    request<SpendingTrackerTransaction>("POST", "/spending-tracker/transactions", payload),
+
+  listSpendingTrackerMonths: () =>
+    request<SpendingTrackerMonth[]>("GET", "/spending-tracker/months"),
+
+  listSpendingTrackerTransactions: (year: number, month: number) =>
+    request<SpendingTrackerTransaction[]>(
+      "GET",
+      `/spending-tracker/transactions?year=${year}&month=${month}`,
+    ),
+
+  setSpendingTrackerTransactionCategory: (id: string, payload: SetTransactionCategoryRequest) =>
+    request<SpendingTrackerTransaction>("PATCH", `/spending-tracker/transactions/${id}`, payload),
+
+  bulkCategorizeSpendingTrackerTransactions: (payload: BulkCategorizeRequest) =>
+    request<BulkCategorizeResponse>(
+      "POST",
+      "/spending-tracker/transactions/bulk-categorize",
+      payload,
+    ),
+
+  getSpendingTrackerQuarterSummary: (year: number, quarter: number) =>
+    request<SpendingTrackerQuarterSummary>(
+      "GET",
+      `/spending-tracker/quarter-summary?year=${year}&quarter=${quarter}`,
+    ),
+
+  getSpendingTrackerYearSummary: (year: number) =>
+    request<SpendingTrackerYearSummary>("GET", `/spending-tracker/year-summary?year=${year}`),
 };

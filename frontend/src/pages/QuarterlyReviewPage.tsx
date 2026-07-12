@@ -1,4 +1,5 @@
 import { useEffect, useState, type FormEvent } from "react";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { api } from "../api/client";
 import type { DueQuarterlyReview, QuarterlyReview, QuarterlyReviewOverview } from "../api/types";
 import { Alert, Button, Card, Field, TextInput } from "../components/ui";
@@ -17,6 +18,7 @@ import {
  * live account balances.
  */
 export function QuarterlyReviewPage() {
+  const [searchParams, setSearchParams] = useSearchParams();
   const [overview, setOverview] = useState<QuarterlyReviewOverview | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -43,6 +45,34 @@ export function QuarterlyReviewPage() {
   useEffect(() => {
     refresh();
   }, []);
+
+  // Spending Tracker integration (query-param scoped navigation): when the
+  // user comes back from "Use these totals in Review", pre-fill the actual
+  // income/spending fields for the matching due period, then strip the
+  // params so a refresh or back-navigation doesn't silently re-fill.
+  useEffect(() => {
+    if (!overview) return;
+    const fillIncome = searchParams.get("fillIncome");
+    const fillSpending = searchParams.get("fillSpending");
+    const fillYear = searchParams.get("fillYear");
+    const fillQuarter = searchParams.get("fillQuarter");
+    if (fillIncome === null || fillSpending === null || fillYear === null || fillQuarter === null)
+      return;
+
+    const period = overview.due.find(
+      (p) => p.year === Number(fillYear) && p.quarter === Number(fillQuarter),
+    );
+    if (period) {
+      selectPeriod(period);
+      setActualIncome(fillIncome);
+      setActualSpending(fillSpending);
+      setNotice(
+        `Actual income and spending were pre-filled from the Spending Tracker for ${period.label}.`,
+      );
+    }
+    setSearchParams(new URLSearchParams(), { replace: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [overview]);
 
   function selectPeriod(period: DueQuarterlyReview) {
     setError(null);
@@ -218,6 +248,7 @@ function ReviewForm({
   onNotesChange: (value: string) => void;
   onSubmit: (e: FormEvent) => void;
 }) {
+  const navigate = useNavigate();
   const startingBalances = period.accounts.map((account) => account.current_balance);
   const enteredEndingBalances = period.accounts.map((account) => {
     const parsed = Number(balances[account.account_id]);
@@ -268,6 +299,17 @@ function ReviewForm({
             required
           />
         </Field>
+        <div className="form-actions">
+          <Button
+            type="button"
+            variant="ghost"
+            onClick={() =>
+              navigate(`/spending-tracker?scopeYear=${period.year}&scopeQuarter=${period.quarter}`)
+            }
+          >
+            Open Spending Tracker for this quarter
+          </Button>
+        </div>
         <Field label="Actual tax paid" htmlFor="qr-tax">
           <TextInput
             id="qr-tax"

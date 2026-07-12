@@ -1,0 +1,3 @@
+DROP TABLE spending_tracker_transactions;
+DROP TABLE spending_tracker_imports;
+DROP TABLE spending_tracker_categories;

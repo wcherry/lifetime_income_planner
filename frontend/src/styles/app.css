@@ -147,6 +147,89 @@ a {
   margin-top: 0.75rem;
 }
 
+/* Generic modal overlay (components/ui.tsx `Modal`) — dismissible details
+   popup, e.g. troubleshooting a single imported Spending Tracker row. */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(2, 6, 15, 0.65);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1.5rem;
+  z-index: 100;
+}
+
+.modal {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 1.5rem;
+  max-width: 32rem;
+  width: 100%;
+  max-height: calc(100vh - 3rem);
+  overflow-y: auto;
+}
+
+.modal-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 0.75rem;
+}
+
+.modal-title {
+  margin: 0;
+  font-size: 1.25rem;
+}
+
+.modal-close {
+  background: none;
+  border: none;
+  color: var(--muted);
+  font-size: 1.4rem;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0.1rem 0.4rem;
+  border-radius: 6px;
+}
+
+.modal-close:hover {
+  color: var(--text);
+  background: var(--surface-2);
+}
+
+.modal-field-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.modal-field-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.4rem 0;
+  border-bottom: 1px solid var(--border);
+  font-size: 0.88rem;
+}
+
+.modal-field-row:last-child {
+  border-bottom: none;
+}
+
+.modal-field-label {
+  color: var(--muted);
+  flex-shrink: 0;
+}
+
+.modal-field-value {
+  text-align: right;
+  word-break: break-word;
+  font-variant-numeric: tabular-nums;
+}
+
 .muted {
   color: var(--muted);
 }
@@ -847,6 +930,50 @@ form {
   color: var(--muted);
 }
 
+.withdrawal-cell {
+  position: relative;
+}
+
+.withdrawal-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  background: none;
+  border: none;
+  padding: 0;
+  margin: 0;
+  font: inherit;
+  font-variant-numeric: tabular-nums;
+  color: inherit;
+  cursor: pointer;
+}
+
+.withdrawal-toggle:disabled {
+  cursor: default;
+}
+
+.withdrawal-chevron {
+  font-size: 0.7rem;
+  color: var(--muted);
+  transition: transform 0.15s ease;
+}
+
+.withdrawal-chevron-open {
+  transform: rotate(180deg);
+}
+
+.withdrawal-dropdown .account-balance-row {
+  justify-content: flex-start;
+}
+
+.withdrawal-dropdown .account-balance-name {
+  flex: 1;
+}
+
+.withdrawal-dropdown .quarter-cat {
+  font-size: 0.78rem;
+}
+
 /* Net worth chart */
 .chart {
   position: relative;
@@ -1066,6 +1193,77 @@ form {
   color: var(--muted);
 }
 
+/* Stacked category chart (Spending Tracker year-by-category expenses).
+   Eight-slot categorical palette, fixed hue order, validated against this
+   app's dark chart surface (--surface #1e293b): all pass the lightness band
+   and chroma floor; worst adjacent CVD ΔE sits in the 8-12 "floor" band,
+   which is legal only paired with secondary encoding — every series here is
+   always both legend-labeled and tooltip-labeled, never color-alone. */
+:root {
+  --cat-1: #3987e5; /* blue */
+  --cat-2: #199e70; /* aqua */
+  --cat-3: #c98500; /* yellow */
+  --cat-4: #008300; /* green */
+  --cat-5: #9085e9; /* violet */
+  --cat-6: #e66767; /* red */
+  --cat-7: #d55181; /* magenta */
+  --cat-8: #d95926; /* orange */
+}
+
+.chart-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1rem;
+  margin-top: 0.75rem;
+}
+
+.chart-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.8rem;
+  color: var(--text);
+}
+
+.chart-legend-swatch {
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+  flex-shrink: 0;
+}
+
+.chart-stack-tooltip-row {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  justify-content: space-between;
+}
+
+.chart-stack-tooltip-key {
+  display: inline-block;
+  width: 10px;
+  height: 2px;
+  border-radius: 1px;
+  flex-shrink: 0;
+}
+
+.chart-stack-tooltip-name {
+  color: var(--muted);
+  margin-right: 0.5rem;
+}
+
+.chart-stack-tooltip-value {
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.chart-stack-tooltip-total {
+  border-top: 1px solid var(--border);
+  margin-top: 0.3rem;
+  padding-top: 0.3rem;
+  font-weight: 700;
+}
+
 /* Life-event badges in the projection table */
 .event-badges {
   display: inline-flex;
@@ -1237,4 +1435,337 @@ form {
   margin: 0;
   border-radius: 0;
   text-align: center;
+}
+
+/* ==========================================================================
+   Spending Tracker (feature/spending-tracker)
+   ========================================================================== */
+
+/* -- CSV import results ---------------------------------------------------
+   Sits below the import form inside the same Card once an import completes.
+*/
+.import-result {
+  margin-top: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.import-result-counts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1.25rem;
+  font-size: 0.9rem;
+}
+
+.import-result-count-imported {
+  color: var(--success-text);
+  font-weight: 600;
+}
+
+.import-result-count-duplicate {
+  color: var(--muted);
+  font-weight: 600;
+}
+
+.import-result-count-skipped {
+  color: var(--error-text);
+  font-weight: 600;
+}
+
+/* Wrap in a native <details> so the per-row skip reasons are collapsible
+   and keyboard/screen-reader accessible without any extra JS state. */
+.import-skipped summary {
+  cursor: pointer;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--text);
+  margin-bottom: 0.4rem;
+}
+
+.import-skipped-list {
+  max-height: 12rem;
+  overflow-y: auto;
+  margin: 0;
+  padding: 0.5rem 0.75rem;
+  list-style: none;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-size: 0.8rem;
+}
+
+.import-skipped-row {
+  padding: 0.3rem 0;
+}
+
+.import-skipped-row + .import-skipped-row {
+  border-top: 1px solid var(--border);
+}
+
+.import-skipped-row-num {
+  color: var(--muted);
+  margin-right: 0.4rem;
+  font-variant-numeric: tabular-nums;
+}
+
+/* -- Category kind chip ----------------------------------------------------
+   One color per `kind`, reusing the same success/error/muted tokens the rest
+   of the app already uses for "good"/"bad"/"neutral" (account-balance-delta-*,
+   chart-event-*, tile-good/tile-warn). Color is never the only signal — the
+   chip always renders its kind as a text label too.
+*/
+.category-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.category-chip::before {
+  content: "";
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: currentColor;
+  flex-shrink: 0;
+}
+
+.category-chip-income {
+  color: var(--success-text);
+}
+
+.category-chip-expense {
+  color: var(--error-text);
+}
+
+.category-chip-ignore {
+  color: var(--muted);
+}
+
+/* "Built-in" indicator on predefined categories, replacing the edit/delete
+   actions a custom category row would show in .account-actions. */
+.category-badge-predefined {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.15rem 0.55rem;
+  border-radius: 999px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  color: var(--muted);
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  white-space: nowrap;
+}
+
+/* -- Month picker ----------------------------------------------------------
+   Grid of month chips; a dot marks months that already have imported data.
+*/
+.month-picker {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(4.5rem, 1fr));
+  gap: 0.5rem;
+}
+
+.month-chip {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 2.75rem;
+  padding: 0.5rem 0.4rem;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  color: var(--text);
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.month-chip:hover {
+  border-color: var(--primary);
+}
+
+.month-chip-selected {
+  border-color: var(--primary);
+  background: var(--primary);
+  color: var(--primary-ink);
+}
+
+/* Data-presence dot, top-right corner of the chip. */
+.month-chip-has-data::after {
+  content: "";
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--primary);
+}
+
+.month-chip-selected.month-chip-has-data::after {
+  background: var(--primary-ink);
+}
+
+/* -- Transaction table -------------------------------------------------
+   Built on the existing .table-scroll / .proj-table pattern, extended with
+   a checkbox column and signed-amount coloring.
+*/
+.proj-table .checkbox-cell {
+  width: 2.25rem;
+  text-align: center;
+}
+
+/* Overrides .proj-table's default `white-space: nowrap` — real-world bank/
+   brokerage descriptions (e.g. "Dividend Through Date: 31dec2024") can be
+   long enough to push the Amount/Category columns off-screen otherwise. */
+.proj-table .txn-description-cell {
+  white-space: normal;
+  max-width: 26rem;
+  overflow-wrap: anywhere;
+}
+
+.proj-table select.input {
+  padding: 0.35rem 0.5rem;
+  font-size: 0.85rem;
+  min-width: 9rem;
+}
+
+.proj-table tr.row-selected td {
+  background: var(--surface-2);
+}
+
+/* A row that opens a details popup on click (e.g. Spending Tracker
+   transaction troubleshooting) — the checkbox/category cells opt back out
+   via stopPropagation so they stay independently clickable. */
+.proj-table tr.row-clickable {
+  cursor: pointer;
+}
+
+.proj-table tr.row-clickable:hover td {
+  background: var(--surface-2);
+}
+
+/* Signed transaction amounts — same income=green / expense=red convention
+   already used by .account-balance-delta-up/down and .chart-event-in/out. */
+.amount-income {
+  color: var(--success-text);
+}
+
+.amount-expense {
+  color: var(--error-text);
+}
+
+/* -- Bulk category assignment bar ------------------------------------------
+   Appears above the transaction table once 1+ rows are checked.
+*/
+.bulk-action-bar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 0.75rem 1rem;
+  margin-top: 0.75rem;
+}
+
+.bulk-action-bar-count {
+  font-weight: 600;
+  font-size: 0.9rem;
+  margin-right: auto;
+}
+
+.bulk-action-bar .input {
+  width: auto;
+  min-width: 10rem;
+}
+
+@media (max-width: 560px) {
+  .bulk-action-bar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .bulk-action-bar-count {
+    margin-right: 0;
+  }
+}
+
+/* -- Quarter-scope banner ----------------------------------------------
+   Shown only when arriving from Quarterly Review with a scoped quarter.
+   Deliberately distinct from a plain .card — tinted + accent-bordered so it
+   reads as a task ("finish this, then go back"), not page furniture.
+*/
+.quarter-scope-banner {
+  background: rgba(45, 212, 191, 0.08);
+  border: 1px solid var(--primary);
+  border-radius: var(--radius);
+  padding: 1.5rem 1.75rem;
+}
+
+.quarter-scope-banner-eyebrow {
+  margin: 0 0 0.25rem;
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--primary);
+}
+
+.quarter-scope-banner-title {
+  margin: 0 0 0.25rem;
+  font-size: 1.4rem;
+}
+
+.quarter-month-coverage {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin: 1rem 0;
+}
+
+.quarter-month {
+  flex: 1 1 0;
+  min-width: 8rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.6rem 0.75rem;
+  border-radius: 8px;
+  border: 1px dashed var(--border);
+  font-size: 0.85rem;
+  text-align: center;
+}
+
+.quarter-month-covered {
+  border-style: solid;
+  border-color: var(--success-text);
+  background: var(--surface-2);
+}
+
+.quarter-month-status {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--muted);
+}
+
+.quarter-month-covered .quarter-month-status {
+  color: var(--success-text);
+}
+
+@media (max-width: 560px) {
+  .quarter-month-coverage {
+    flex-direction: column;
+  }
 }

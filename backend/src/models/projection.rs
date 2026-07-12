@@ -261,6 +261,9 @@ pub struct YearProjection {
     pub account_balances: Vec<YearAccountBalance>,
     /// Spending (or taxes) that could not be funded because accounts were exhausted.
     pub shortfall: f64,
+    /// Per-account breakdown of this year's withdrawal (which accounts were
+    /// drawn from, and how much), one entry per account actually drawn from.
+    pub withdrawal_sources: Vec<QuarterWithdrawal>,
 }
 
 /// A single account's withdrawal within a quarter of the near-term schedule.

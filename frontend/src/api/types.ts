@@ -392,6 +392,8 @@ export interface YearProjection {
   ending_balance: number;
   account_balances: YearAccountBalance[];
   shortfall: number;
+  /** Per-account breakdown of this year's withdrawal (which accounts were drawn from, and how much). */
+  withdrawal_sources: QuarterWithdrawal[];
 }
 
 export interface QuarterWithdrawal {
@@ -740,6 +742,136 @@ export interface TaxDocumentYearSummary {
   document_count: number;
   totals_by_field: Record<string, number>;
   grand_total: number;
+}
+
+// --- Spending Tracker: transaction-level CSV import + categorization
+// (distinct from the planned-budget "Spending" page) ---
+
+export type SpendingTrackerCategoryKind = "income" | "expense" | "ignore";
+
+export interface SpendingTrackerCategory {
+  id: string;
+  /** True for a user's own custom category, false for a predefined one. */
+  is_own: boolean;
+  name: string;
+  kind: SpendingTrackerCategoryKind;
+  is_predefined: boolean;
+}
+
+export interface NewSpendingTrackerCategoryRequest {
+  name: string;
+  kind: SpendingTrackerCategoryKind;
+}
+
+export interface SpendingTrackerTransaction {
+  id: string;
+  year: number;
+  month: number;
+  transaction_date: string; // ISO date
+  description: string;
+  amount: number;
+  category_id: string | null;
+  category_name: string | null;
+  category_kind: SpendingTrackerCategoryKind | null;
+  /** The imported CSV row's own `{header: value}` pairs, verbatim, column order preserved —
+   * for troubleshooting (e.g. a details popup), not for display in the main table. */
+  raw_row: Record<string, string>;
+}
+
+export interface SpendingTrackerMonth {
+  year: number;
+  month: number;
+  transaction_count: number;
+  last_imported_at: string;
+}
+
+export interface ImportSpendingTransactionsRequest {
+  year: number;
+  month: number;
+  /** Raw CSV content — tolerant header detection (date/description/amount, or debit+credit). */
+  csv_content: string;
+  source_filename?: string | null;
+}
+
+/** Record a single transaction by hand (e.g. cash spending) rather than via CSV import. */
+export interface CreateManualTransactionRequest {
+  year: number;
+  month: number;
+  transaction_date: string; // ISO date
+  description: string;
+  /** Signed: negative = expense, positive = income (matches the CSV import convention). */
+  amount: number;
+  category_id?: string | null;
+}
+
+export interface SkippedRowResponse {
+  row_number: number;
+  reason: string;
+}
+
+/** One CSV category label from an import that didn't exactly match an existing category — carries
+ * a best-guess suggestion (never a blind guess: only set when there's real overlap) and the ids of
+ * the newly imported transactions with that label, so the caller can review/apply the mapping
+ * (e.g. via bulk-categorize) instead of a category being auto-created. */
+export interface CategoryMappingSuggestion {
+  label: string;
+  suggested_category_id: string | null;
+  suggested_category_name: string | null;
+  transaction_ids: string[];
+}
+
+export interface SpendingTrackerImportResult {
+  import_id: string;
+  /** Rows newly inserted by this import (excludes duplicates and skipped rows). */
+  imported_count: number;
+  /** Rows that parsed cleanly but were already present (same dedupe key). */
+  duplicate_count: number;
+  skipped_rows: SkippedRowResponse[];
+  category_mappings: CategoryMappingSuggestion[];
+}
+
+export interface SetTransactionCategoryRequest {
+  category_id: string | null;
+}
+
+export interface BulkCategorizeRequest {
+  transaction_ids: string[];
+  category_id: string | null;
+}
+
+export interface BulkCategorizeResponse {
+  updated_count: number;
+}
+
+export interface SpendingTrackerMonthCoverage {
+  year: number;
+  month: number;
+  has_data: boolean;
+  income_total: number;
+  expense_total: number;
+}
+
+export interface SpendingTrackerQuarterSummary {
+  year: number;
+  quarter: number;
+  income_total: number;
+  expense_total: number;
+  months: SpendingTrackerMonthCoverage[];
+}
+
+export interface SpendingTrackerCategoryMonthSeries {
+  category_id: string;
+  category_name: string;
+  /** Twelve entries, index 0 = January. */
+  monthly_totals: number[];
+}
+
+export interface SpendingTrackerYearSummary {
+  year: number;
+  income_total: number;
+  expense_total: number;
+  months: SpendingTrackerMonthCoverage[];
+  expense_categories: SpendingTrackerCategoryMonthSeries[];
 }
 
 // --- Phase 6: Social Security statement import ---
