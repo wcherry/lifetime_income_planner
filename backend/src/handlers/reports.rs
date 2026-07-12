@@ -140,6 +140,7 @@ mod tests {
             ending_balance: 0.0,
             account_balances: vec![],
             shortfall: 0.0,
+            withdrawal_sources: vec![],
         }
     }
 

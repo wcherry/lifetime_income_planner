@@ -51,8 +51,8 @@ diesel::table! {
         roth_conversion_ceiling -> Double,
         roth_conversion_start_year -> Nullable<Integer>,
         roth_conversion_end_year -> Nullable<Integer>,
-        withdrawal_strategy -> Text,
         aca_benchmark_annual_premium -> Double,
+        withdrawal_strategy -> Text,
         medicare_part_b_annual_premium -> Double,
     }
 }
@@ -244,6 +244,63 @@ diesel::table! {
 }
 
 diesel::table! {
+    spending_tracker_categories (id) {
+        id -> Text,
+        user_id -> Nullable<Text>,
+        name -> Text,
+        kind -> Text,
+        is_predefined -> Bool,
+        created_at -> Timestamp,
+        updated_at -> Timestamp,
+    }
+}
+
+diesel::table! {
+    spending_tracker_category_mappings (id) {
+        id -> Text,
+        user_id -> Text,
+        label -> Text,
+        normalized_label -> Text,
+        category_id -> Text,
+        created_at -> Timestamp,
+        updated_at -> Timestamp,
+    }
+}
+
+diesel::table! {
+    spending_tracker_imports (id) {
+        id -> Text,
+        user_id -> Text,
+        year -> Integer,
+        month -> Integer,
+        source_filename -> Nullable<Text>,
+        row_count -> Integer,
+        duplicate_count -> Integer,
+        skipped_count -> Integer,
+        imported_at -> Timestamp,
+    }
+}
+
+diesel::table! {
+    spending_tracker_transactions (id) {
+        id -> Text,
+        user_id -> Text,
+        import_id -> Text,
+        year -> Integer,
+        month -> Integer,
+        transaction_date -> Date,
+        description -> Text,
+        amount -> Double,
+        category_id -> Nullable<Text>,
+        dedupe_key -> Text,
+        created_at -> Timestamp,
+        updated_at -> Timestamp,
+        raw_row_json -> Text,
+        source_category_label -> Nullable<Text>,
+    }
+}
+
+diesel::table! {
     state_tax_brackets (id) {
         id -> Text,
         state -> Text,
@@ -311,11 +368,11 @@ diesel::table! {
 
 diesel::joinable!(accounts -> users (user_id));
 diesel::joinable!(assumptions -> users (user_id));
-diesel::joinable!(collaborators -> users (owner_user_id));
 diesel::joinable!(income_sources -> users (user_id));
 diesel::joinable!(life_events -> users (user_id));
 diesel::joinable!(plaid_items -> accounts (account_id));
 diesel::joinable!(plaid_items -> users (user_id));
+diesel::joinable!(plaid_transactions -> accounts (account_id));
 diesel::joinable!(plaid_transactions -> plaid_items (plaid_item_id));
 diesel::joinable!(plaid_transactions -> users (user_id));
 diesel::joinable!(plan_snapshots -> plans (plan_id));
@@ -325,6 +382,13 @@ diesel::joinable!(profiles -> users (user_id));
 diesel::joinable!(quarterly_reviews -> users (user_id));
 diesel::joinable!(social_security_estimates -> users (user_id));
 diesel::joinable!(spending_items -> users (user_id));
+diesel::joinable!(spending_tracker_categories -> users (user_id));
+diesel::joinable!(spending_tracker_category_mappings -> spending_tracker_categories (category_id));
+diesel::joinable!(spending_tracker_category_mappings -> users (user_id));
+diesel::joinable!(spending_tracker_imports -> users (user_id));
+diesel::joinable!(spending_tracker_transactions -> spending_tracker_categories (category_id));
+diesel::joinable!(spending_tracker_transactions -> spending_tracker_imports (import_id));
+diesel::joinable!(spending_tracker_transactions -> users (user_id));
 diesel::joinable!(tax_documents -> users (user_id));
 
 diesel::allow_tables_to_appear_in_same_query!(
@@ -344,6 +408,10 @@ diesel::allow_tables_to_appear_in_same_query!(
     quarterly_reviews,
     social_security_estimates,
     spending_items,
+    spending_tracker_categories,
+    spending_tracker_category_mappings,
+    spending_tracker_imports,
+    spending_tracker_transactions,
     state_tax_brackets,
     state_tax_params,
     tax_brackets,

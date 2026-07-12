@@ -21,6 +21,7 @@ import { ProjectionPage } from "./pages/ProjectionPage";
 import { PlansPage } from "./pages/PlansPage";
 import { ComparisonPage } from "./pages/ComparisonPage";
 import { QuarterlyReviewPage } from "./pages/QuarterlyReviewPage";
+import { SpendingTrackerPage } from "./pages/SpendingTrackerPage";
 import { TaxDocumentsPage } from "./pages/TaxDocumentsPage";
 import { SocialSecurityPage } from "./pages/SocialSecurityPage";
 import { InsightsPage } from "./pages/InsightsPage";
@@ -95,6 +96,9 @@ function Header() {
           </NavLink>
           <NavLink to="/spending" className={({ isActive }) => (isActive ? "active" : "")}>
             Spending
+          </NavLink>
+          <NavLink to="/spending-tracker" className={({ isActive }) => (isActive ? "active" : "")}>
+            Spending Tracker
           </NavLink>
           <NavLink to="/life-events" className={({ isActive }) => (isActive ? "active" : "")}>
             Life events
@@ -210,6 +214,14 @@ function Shell() {
             element={
               <RequireAuth>
                 <SpendingPage />
+              </RequireAuth>
+            }
+          />
+          <Route
+            path="/spending-tracker"
+            element={
+              <RequireAuth>
+                <SpendingTrackerPage />
               </RequireAuth>
             }
           />

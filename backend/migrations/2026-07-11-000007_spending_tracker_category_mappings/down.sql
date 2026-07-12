@@ -1,0 +1,2 @@
+DROP TABLE spending_tracker_category_mappings;
+ALTER TABLE spending_tracker_transactions DROP COLUMN source_category_label;

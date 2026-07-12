@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type {
   ButtonHTMLAttributes,
   InputHTMLAttributes,
@@ -43,10 +43,7 @@ export function TextInput(props: InputHTMLAttributes<HTMLInputElement>) {
   return <input className="input" {...props} />;
 }
 
-export function Select({
-  children,
-  ...props
-}: SelectHTMLAttributes<HTMLSelectElement>) {
+export function Select({ children, ...props }: SelectHTMLAttributes<HTMLSelectElement>) {
   return (
     <select className="input" {...props}>
       {children}
@@ -54,13 +51,7 @@ export function Select({
   );
 }
 
-export function Alert({
-  kind,
-  children,
-}: {
-  kind: "error" | "success";
-  children: ReactNode;
-}) {
+export function Alert({ kind, children }: { kind: "error" | "success"; children: ReactNode }) {
   return <div className={`alert alert-${kind}`}>{children}</div>;
 }
 
@@ -100,6 +91,55 @@ export function Card({
         {title}
       </button>
       {open && <div className="card-body">{children}</div>}
+    </div>
+  );
+}
+
+/** Dismissible overlay popup — click the backdrop, press Escape, or use the close button. */
+export function Modal({
+  title,
+  onClose,
+  children,
+}: {
+  title: string;
+  onClose: () => void;
+  children: ReactNode;
+}) {
+  useEffect(() => {
+    function onKeyDown(e: KeyboardEvent) {
+      if (e.key === "Escape") onClose();
+    }
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [onClose]);
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div
+        className="modal"
+        role="dialog"
+        aria-modal="true"
+        aria-label={title}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="modal-header">
+          <h2 className="modal-title">{title}</h2>
+          <button type="button" className="modal-close" aria-label="Close" onClick={onClose}>
+            ×
+          </button>
+        </div>
+        <div className="modal-body">{children}</div>
+      </div>
+    </div>
+  );
+}
+
+/** A label/value pair inside a `Modal` — e.g. a details/troubleshooting popup. */
+export function ModalFieldRow({ label, value }: { label: string; value: ReactNode }) {
+  return (
+    <div className="modal-field-row">
+      <span className="modal-field-label">{label}</span>
+      <span className="modal-field-value">{value}</span>
     </div>
   );
 }

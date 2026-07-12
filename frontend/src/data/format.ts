@@ -8,6 +8,19 @@ export function formatCurrency(value: number): string {
   return currency.format(value);
 }
 
+const currencyCents = new Intl.NumberFormat("en-US", {
+  style: "currency",
+  currency: "USD",
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 2,
+});
+
+/** Currency with cents always shown — for transaction-level amounts (e.g. Spending Tracker), where
+ * rounding to whole dollars would hide real differences between line items. */
+export function formatCurrencyCents(value: number): string {
+  return currencyCents.format(value);
+}
+
 export function formatPercent(value: number): string {
   return `${value.toFixed(1)}%`;
 }
@@ -20,6 +33,12 @@ export function formatRate(fraction: number): string {
 /** Currency with an explicit +/− sign, for signed cash flows. */
 export function formatSignedCurrency(value: number): string {
   const abs = formatCurrency(Math.abs(value));
+  return value < 0 ? `−${abs}` : `+${abs}`;
+}
+
+/** `formatSignedCurrency`, with cents always shown (see `formatCurrencyCents`). */
+export function formatSignedCurrencyCents(value: number): string {
+  const abs = formatCurrencyCents(Math.abs(value));
   return value < 0 ? `−${abs}` : `+${abs}`;
 }
 
