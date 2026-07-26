@@ -3,6 +3,7 @@ import { api } from "../api/client";
 import type { SpendingItem, SpendingRequest } from "../api/types";
 import { SpendingForm } from "../components/SpendingForm";
 import { Alert, Button, Card } from "../components/ui";
+import { useConfirmDialog } from "../components/ConfirmDialog";
 import { formatCurrency } from "../data/format";
 import { spendingCategoryLabel, spendingFrequencyLabel } from "../data/spending";
 
@@ -13,6 +14,7 @@ export function SpendingPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [editing, setEditing] = useState<Editing>(null);
+  const { confirm } = useConfirmDialog();
 
   async function refresh() {
     try {
@@ -39,7 +41,7 @@ export function SpendingPage() {
   }
 
   async function handleDelete(item: SpendingItem) {
-    if (!window.confirm(`Delete "${item.name}"?`)) return;
+    if (!(await confirm(`Delete "${item.name}"?`))) return;
     setError(null);
     try {
       await api.deleteSpending(item.id);

@@ -24,6 +24,10 @@ pub struct ProjectionAssumptions {
     /// Medicare Part B annual premium per enrolled household member driving
     /// automatic post-65 cost modeling (Phase 3, feature 3); 0 when off.
     pub medicare_part_b_annual_premium: f64,
+    /// "Don't incur penalties" (withdrawal sequencing): true when tax-deferred
+    /// accounts are excluded from the drawdown order before age 59½ rather
+    /// than drawn from and penalized.
+    pub avoid_early_withdrawal_penalty: bool,
     /// True when the user has not saved assumptions and defaults were used.
     pub is_default: bool,
 }
@@ -55,6 +59,8 @@ pub struct ProjectionSummary {
     pub total_lifetime_irmaa_surcharges: f64,
     /// Total required minimum distributions across the plan (RMD module).
     pub total_lifetime_rmd: f64,
+    /// Total gross Social Security benefits received across the plan.
+    pub total_lifetime_social_security: f64,
     /// First year in which spending could not be fully funded, if any.
     pub depletion_year: Option<i32>,
 }
@@ -90,6 +96,10 @@ pub struct YearTax {
     pub federal_ordinary_tax: f64,
     /// Federal tax on qualified dividends and long-term capital gains.
     pub federal_capital_gains_tax: f64,
+    /// IRS additional tax (IRC §72(t)) on tax-deferred withdrawals taken
+    /// before the account owner reaches the "Penalty-free withdrawals"
+    /// milestone (age 59½). Already included in `federal_tax`/`total_tax`.
+    pub early_withdrawal_penalty: f64,
     pub federal_tax: f64,
     /// State taxable income (the state's own base, after its own deduction).
     pub state_taxable_income: f64,

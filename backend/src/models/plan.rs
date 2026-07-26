@@ -112,6 +112,10 @@ pub struct AssumptionsSnapshot {
     // before the feature existed.
     #[serde(default)]
     pub medicare_part_b_annual_premium: f64,
+    // "Don't incur penalties" (withdrawal sequencing). Defaulted for plans
+    // saved before the feature existed.
+    #[serde(default)]
+    pub avoid_early_withdrawal_penalty: bool,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -249,6 +253,7 @@ impl From<&Assumptions> for AssumptionsSnapshot {
             withdrawal_strategy: a.withdrawal_strategy.clone(),
             aca_benchmark_annual_premium: a.aca_benchmark_annual_premium,
             medicare_part_b_annual_premium: a.medicare_part_b_annual_premium,
+            avoid_early_withdrawal_penalty: a.avoid_early_withdrawal_penalty,
         }
     }
 }
@@ -362,6 +367,7 @@ impl AssumptionsSnapshot {
             withdrawal_strategy: self.withdrawal_strategy.clone(),
             aca_benchmark_annual_premium: self.aca_benchmark_annual_premium,
             medicare_part_b_annual_premium: self.medicare_part_b_annual_premium,
+            avoid_early_withdrawal_penalty: self.avoid_early_withdrawal_penalty,
         }
     }
 }

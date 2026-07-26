@@ -23,6 +23,10 @@ pub const DEFAULT_ACA_BENCHMARK_ANNUAL_PREMIUM: f64 = 0.0;
 /// least this once enrolled, so it is a realistic default rather than an
 /// opt-in like the ACA benchmark. 0 disables it.
 pub const DEFAULT_MEDICARE_PART_B_ANNUAL_PREMIUM: f64 = 2_220.0;
+/// "Don't incur penalties" (withdrawal sequencing) defaults to *off*: the
+/// engine may draw from tax-deferred accounts before age 59½ (paying the 10%
+/// early-withdrawal penalty) when that's what a spending need requires.
+pub const DEFAULT_AVOID_EARLY_WITHDRAWAL_PENALTY: bool = false;
 
 /// Withdrawal sequencing strategy (roadmap Phase 2, feature 9): which order the
 /// engine draws from accounts to cover a year's cash need.
@@ -38,6 +42,13 @@ pub enum WithdrawalStrategy {
     /// more at the margin than an equivalent ordinary withdrawal, draws
     /// tax-deferred funds before taxable ones.
     TaxOptimized,
+    /// Runs the same tax-aware sequencing as `TaxOptimized`, plus a search
+    /// (feature 9b) over several levels of voluntary tax-deferred withdrawals
+    /// that "fill" the current tax bracket each year — shrinking tax-deferred
+    /// balances before RMDs force larger, possibly higher-bracket withdrawals
+    /// later. The engine runs multiple full projections internally and keeps
+    /// whichever level produces the greatest total lifetime after-tax cash.
+    MaximizeIncome,
 }
 
 impl WithdrawalStrategy {
@@ -45,6 +56,7 @@ impl WithdrawalStrategy {
         match self {
             WithdrawalStrategy::Conventional => "conventional",
             WithdrawalStrategy::TaxOptimized => "tax_optimized",
+            WithdrawalStrategy::MaximizeIncome => "maximize_income",
         }
     }
 
@@ -53,6 +65,7 @@ impl WithdrawalStrategy {
     pub fn from_str(s: &str) -> Self {
         match s {
             "tax_optimized" => WithdrawalStrategy::TaxOptimized,
+            "maximize_income" => WithdrawalStrategy::MaximizeIncome,
             _ => WithdrawalStrategy::Conventional,
         }
     }
@@ -85,6 +98,11 @@ pub struct Assumptions {
     /// Medicare Part B modeling (Phase 3, feature 3): the annual standard Part
     /// B premium per Medicare-enrolled household member. 0 disables it.
     pub medicare_part_b_annual_premium: f64,
+    /// "Don't incur penalties" (withdrawal sequencing): when true, tax-deferred
+    /// accounts are excluded from the drawdown order for an owner who hasn't
+    /// reached the age-59½ "Penalty-free withdrawals" milestone, rather than
+    /// drawing from them and paying the 10% early-withdrawal penalty.
+    pub avoid_early_withdrawal_penalty: bool,
 }
 
 /// Insertable row used when assumptions are first created.
@@ -104,6 +122,7 @@ pub struct NewAssumptions {
     pub aca_benchmark_annual_premium: f64,
     pub withdrawal_strategy: String,
     pub medicare_part_b_annual_premium: f64,
+    pub avoid_early_withdrawal_penalty: bool,
 }
 
 /// Request body for creating or replacing the planning assumptions.
@@ -160,6 +179,13 @@ pub struct AssumptionsRequest {
     #[serde(default = "default_medicare_part_b_annual_premium")]
     #[schema(example = 2_220.0)]
     pub medicare_part_b_annual_premium: f64,
+
+    /// "Don't incur penalties" (withdrawal sequencing). When true, the engine
+    /// never draws from a tax-deferred account before its owner turns 59½,
+    /// even if that leaves a spending shortfall. Defaults to off.
+    #[serde(default)]
+    #[schema(example = false)]
+    pub avoid_early_withdrawal_penalty: bool,
 }
 
 fn default_medicare_part_b_annual_premium() -> f64 {
@@ -179,6 +205,7 @@ pub struct AssumptionsResponse {
     pub aca_benchmark_annual_premium: f64,
     pub withdrawal_strategy: WithdrawalStrategy,
     pub medicare_part_b_annual_premium: f64,
+    pub avoid_early_withdrawal_penalty: bool,
     /// True when no assumptions have been saved yet and defaults are being returned.
     pub is_default: bool,
     #[schema(value_type = Option<String>, format = DateTime)]
@@ -199,6 +226,7 @@ impl AssumptionsResponse {
             aca_benchmark_annual_premium: DEFAULT_ACA_BENCHMARK_ANNUAL_PREMIUM,
             withdrawal_strategy: WithdrawalStrategy::Conventional,
             medicare_part_b_annual_premium: DEFAULT_MEDICARE_PART_B_ANNUAL_PREMIUM,
+            avoid_early_withdrawal_penalty: DEFAULT_AVOID_EARLY_WITHDRAWAL_PENALTY,
             is_default: true,
             updated_at: None,
         }
@@ -218,6 +246,7 @@ impl From<Assumptions> for AssumptionsResponse {
             aca_benchmark_annual_premium: a.aca_benchmark_annual_premium,
             withdrawal_strategy: WithdrawalStrategy::from_str(&a.withdrawal_strategy),
             medicare_part_b_annual_premium: a.medicare_part_b_annual_premium,
+            avoid_early_withdrawal_penalty: a.avoid_early_withdrawal_penalty,
             is_default: false,
             updated_at: Some(a.updated_at),
         }

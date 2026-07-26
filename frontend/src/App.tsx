@@ -9,6 +9,7 @@ import {
 } from "./api/client";
 import type { CollaborationContext } from "./api/types";
 import { AuthProvider, useAuth } from "./auth/AuthContext";
+import { ConfirmDialogProvider } from "./components/ConfirmDialog";
 import { LoginPage } from "./pages/LoginPage";
 import { RegisterPage } from "./pages/RegisterPage";
 import { ProfilePage } from "./pages/ProfilePage";
@@ -315,7 +316,9 @@ function Shell() {
 export function App() {
   return (
     <AuthProvider>
-      <Shell />
+      <ConfirmDialogProvider>
+        <Shell />
+      </ConfirmDialogProvider>
     </AuthProvider>
   );
 }

@@ -1,2 +1,7 @@
 [alias]
-xtask = "run --package xtask --"
+xtask = "run --manifest-path xtask/Cargo.toml --"
+web = "run --manifest-path xtask/Cargo.toml -- build-web"
+e2e = "run --manifest-path xtask/Cargo.toml -- e2e"
+docker = "run --manifest-path xtask/Cargo.toml -- docker"
+dev = "run --manifest-path xtask/Cargo.toml -- dev"
+storybook= "run --manifest-path xtask/Cargo.toml -- storybook"

@@ -224,7 +224,7 @@ export interface LifeEventRequest {
   notes?: string | null;
 }
 
-export type WithdrawalStrategy = "conventional" | "tax_optimized";
+export type WithdrawalStrategy = "conventional" | "tax_optimized" | "maximize_income";
 
 export interface Assumptions {
   inflation_rate: number;
@@ -237,6 +237,8 @@ export interface Assumptions {
   aca_benchmark_annual_premium: number;
   withdrawal_strategy: WithdrawalStrategy;
   medicare_part_b_annual_premium: number;
+  /** "Don't incur penalties": excludes tax-deferred accounts from the drawdown order before age 59½. */
+  avoid_early_withdrawal_penalty: boolean;
   is_default: boolean;
   updated_at: string | null;
 }
@@ -252,6 +254,7 @@ export interface AssumptionsRequest {
   aca_benchmark_annual_premium: number;
   withdrawal_strategy: WithdrawalStrategy;
   medicare_part_b_annual_premium: number;
+  avoid_early_withdrawal_penalty: boolean;
 }
 
 export interface ProjectionAssumptions {
@@ -266,6 +269,7 @@ export interface ProjectionAssumptions {
   withdrawal_strategy: string;
   aca_benchmark_annual_premium: number;
   medicare_part_b_annual_premium: number;
+  avoid_early_withdrawal_penalty: boolean;
   is_default: boolean;
 }
 
@@ -283,6 +287,7 @@ export interface ProjectionSummary {
   total_lifetime_medicare_premiums: number;
   total_lifetime_irmaa_surcharges: number;
   total_lifetime_rmd: number;
+  total_lifetime_social_security: number;
   depletion_year: number | null;
 }
 
@@ -328,6 +333,8 @@ export interface YearTax {
   taxable_income: number;
   federal_ordinary_tax: number;
   federal_capital_gains_tax: number;
+  /** IRS additional tax (IRC §72(t), 10%) on tax-deferred withdrawals taken before age 59½. Included in `federal_tax`/`total_tax`. */
+  early_withdrawal_penalty: number;
   federal_tax: number;
   state_taxable_income: number;
   state_standard_deduction: number;

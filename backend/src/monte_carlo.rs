@@ -174,6 +174,7 @@ mod tests {
             withdrawal_strategy: "conventional".to_string(),
             aca_benchmark_annual_premium: 0.0,
             medicare_part_b_annual_premium: 0.0,
+            avoid_early_withdrawal_penalty: false,
             tax_tables: TaxTables::default_2025(),
             aca_tables: AcaTables::default_2025(),
             irmaa_tables: IrmaaTables::default_2025(),

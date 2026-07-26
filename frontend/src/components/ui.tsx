@@ -100,10 +100,13 @@ export function Modal({
   title,
   onClose,
   children,
+  wide,
 }: {
   title: string;
   onClose: () => void;
   children: ReactNode;
+  /** Use a wider modal for content-dense breakdowns (e.g. a full year's tax/withdrawal detail). */
+  wide?: boolean;
 }) {
   useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
@@ -116,7 +119,7 @@ export function Modal({
   return (
     <div className="modal-overlay" onClick={onClose}>
       <div
-        className="modal"
+        className={`modal${wide ? " modal-wide" : ""}`}
         role="dialog"
         aria-modal="true"
         aria-label={title}
@@ -135,10 +138,22 @@ export function Modal({
 }
 
 /** A label/value pair inside a `Modal` — e.g. a details/troubleshooting popup. */
-export function ModalFieldRow({ label, value }: { label: string; value: ReactNode }) {
+export function ModalFieldRow({
+  label,
+  value,
+  hint,
+}: {
+  label: string;
+  value: ReactNode;
+  /** Short muted explanation shown after the label, e.g. why the figure matters. */
+  hint?: string;
+}) {
   return (
     <div className="modal-field-row">
-      <span className="modal-field-label">{label}</span>
+      <span className="modal-field-label">
+        {label}
+        {hint && <span className="muted tax-hint"> {hint}</span>}
+      </span>
       <span className="modal-field-value">{value}</span>
     </div>
   );

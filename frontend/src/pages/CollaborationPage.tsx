@@ -2,6 +2,7 @@ import { useEffect, useState, type FormEvent } from "react";
 import { api } from "../api/client";
 import type { Collaborator, CollaboratorRole, Invitation } from "../api/types";
 import { Alert, Button, Card, Field, Select, TextInput } from "../components/ui";
+import { useConfirmDialog } from "../components/ConfirmDialog";
 
 function roleLabel(role: CollaboratorRole | string): string {
   return role === "advisor" ? "Advisor (read-only)" : "Spouse (full access)";
@@ -17,6 +18,7 @@ export function CollaborationPage() {
 
   const [email, setEmail] = useState("");
   const [role, setRole] = useState<CollaboratorRole>("spouse");
+  const { confirm } = useConfirmDialog();
 
   async function refresh() {
     try {
@@ -55,7 +57,7 @@ export function CollaborationPage() {
   }
 
   async function handleRevoke(c: Collaborator) {
-    if (!window.confirm(`Revoke access for ${c.email}?`)) return;
+    if (!(await confirm(`Revoke access for ${c.email}?`))) return;
     setError(null);
     try {
       await api.revokeCollaborator(c.id);

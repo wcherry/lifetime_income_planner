@@ -21,6 +21,7 @@ import {
   Select,
   TextInput,
 } from "../components/ui";
+import { useConfirmDialog } from "../components/ConfirmDialog";
 import { SpendingTrackerYearChart } from "../components/SpendingTrackerYearChart";
 import { formatCurrencyCents, formatSignedCurrencyCents } from "../data/format";
 import {
@@ -75,6 +76,7 @@ export function SpendingTrackerPage() {
   const [transactions, setTransactions] = useState<SpendingTrackerTransaction[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const { confirm } = useConfirmDialog();
 
   const [csvContent, setCsvContent] = useState("");
   const [sourceFilename, setSourceFilename] = useState("");
@@ -316,9 +318,9 @@ export function SpendingTrackerPage() {
 
   async function handleDeleteCategory(category: SpendingTrackerCategory) {
     if (
-      !window.confirm(
+      !(await confirm(
         `Delete the category "${category.name}"? Its transactions become uncategorized.`,
-      )
+      ))
     )
       return;
     setError(null);

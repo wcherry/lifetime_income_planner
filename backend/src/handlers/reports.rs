@@ -47,13 +47,13 @@ fn render_tax_summary_csv(projection: &ProjectionResponse) -> String {
         "Year,Age,Withdrawal Order,Ordinary Income,Qualified Dividends,Capital Gains,\
          Social Security Benefits,Taxable Social Security,Adjusted Gross Income,MAGI,\
          Standard Deduction,Taxable Income,Federal Ordinary Tax,Federal Capital Gains Tax,\
-         Federal Tax,State Taxable Income,State Tax,Total Tax,Effective Rate,Marginal Rate,\
-         Roth Conversion,Medicare Premiums,IRMAA Surcharge\n",
+         Early Withdrawal Penalty,Federal Tax,State Taxable Income,State Tax,Total Tax,\
+         Effective Rate,Marginal Rate,Roth Conversion,Medicare Premiums,IRMAA Surcharge\n",
     );
     for y in &projection.annual {
         let t = &y.tax;
         out.push_str(&format!(
-            "{},{},{},{:.2},{:.2},{:.2},{:.2},{:.2},{:.2},{:.2},{:.2},{:.2},{:.2},{:.2},{:.2},{:.2},{:.2},{:.2},{:.4},{:.4},{:.2},{:.2},{:.2}\n",
+            "{},{},{},{:.2},{:.2},{:.2},{:.2},{:.2},{:.2},{:.2},{:.2},{:.2},{:.2},{:.2},{:.2},{:.2},{:.2},{:.2},{:.2},{:.4},{:.4},{:.2},{:.2},{:.2}\n",
             y.year,
             y.primary_age,
             y.withdrawal_order,
@@ -68,6 +68,7 @@ fn render_tax_summary_csv(projection: &ProjectionResponse) -> String {
             t.taxable_income,
             t.federal_ordinary_tax,
             t.federal_capital_gains_tax,
+            t.early_withdrawal_penalty,
             t.federal_tax,
             t.state_taxable_income,
             t.state_tax,
@@ -120,6 +121,7 @@ mod tests {
                 taxable_income: (ordinary_income - 15_000.0).max(0.0),
                 federal_ordinary_tax: total_tax,
                 federal_capital_gains_tax: 0.0,
+                early_withdrawal_penalty: 0.0,
                 federal_tax: total_tax,
                 state_taxable_income: 0.0,
                 state_standard_deduction: 0.0,
@@ -160,6 +162,7 @@ mod tests {
                 withdrawal_strategy: "conventional".to_string(),
                 aca_benchmark_annual_premium: 0.0,
                 medicare_part_b_annual_premium: 0.0,
+                avoid_early_withdrawal_penalty: false,
                 is_default: false,
             },
             summary: ProjectionSummary {
@@ -176,6 +179,7 @@ mod tests {
                 total_lifetime_medicare_premiums: 0.0,
                 total_lifetime_irmaa_surcharges: 0.0,
                 total_lifetime_rmd: 0.0,
+                total_lifetime_social_security: 0.0,
                 depletion_year: None,
             },
             annual: vec![

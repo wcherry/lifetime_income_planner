@@ -14,7 +14,7 @@ const MAX_SELECTION = 10;
  * without touching the live working set — and lines up their headline
  * figures for a direct comparison, the way the roadmap's Comparison Dashboard
  * describes (Taxes · Estate · ACA subsidies · RMD · Net spending · Age money
- * depleted).
+ * depleted, Social Security paid).
  */
 export function ComparisonPage() {
   const [plans, setPlans] = useState<Plan[]>([]);
@@ -139,6 +139,11 @@ export function ComparisonPage() {
                   pick={(r) => r.summary.total_lifetime_aca_subsidies}
                 />
                 <CompareRow label="Lifetime RMD" results={results} pick={(r) => r.summary.total_lifetime_rmd} />
+                <CompareRow
+                  label="Social Security paid"
+                  results={results}
+                  pick={(r) => r.summary.total_lifetime_social_security}
+                />
                 <CompareRow
                   label="Lifetime spending"
                   results={results}

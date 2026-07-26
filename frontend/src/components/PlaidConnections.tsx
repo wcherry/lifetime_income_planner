@@ -3,6 +3,7 @@ import { api } from "../api/client";
 import type { PlaidItem } from "../api/types";
 import { formatCurrency } from "../data/format";
 import { Alert, Button } from "./ui";
+import { useConfirmDialog } from "./ConfirmDialog";
 
 /**
  * Bank connections (roadmap Phase 6, feature 1): link a Plaid sandbox
@@ -18,6 +19,7 @@ export function PlaidConnections() {
   const [status, setStatus] = useState<string | null>(null);
   const [connecting, setConnecting] = useState(false);
   const [syncingId, setSyncingId] = useState<string | null>(null);
+  const { confirm } = useConfirmDialog();
 
   async function refresh() {
     try {
@@ -70,7 +72,7 @@ export function PlaidConnections() {
   }
 
   async function handleUnlink(item: PlaidItem) {
-    if (!window.confirm(`Unlink ${item.institution_name}?`)) return;
+    if (!(await confirm(`Unlink ${item.institution_name}?`))) return;
     setError(null);
     try {
       await api.deletePlaidItem(item.id);

@@ -2,6 +2,7 @@ import { useEffect, useState, type FormEvent } from "react";
 import { api } from "../api/client";
 import type { TaxDocument, TaxDocumentYearSummary, TaxFormType } from "../api/types";
 import { Alert, Button, Card, Field, Select, TextInput } from "../components/ui";
+import { useConfirmDialog } from "../components/ConfirmDialog";
 import { formatCurrency } from "../data/format";
 
 const TAX_FORM_TYPE_OPTIONS: { value: TaxFormType; label: string }[] = [
@@ -26,6 +27,7 @@ export function TaxDocumentsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [importing, setImporting] = useState(false);
+  const { confirm } = useConfirmDialog();
 
   const [taxYear, setTaxYear] = useState(currentYear);
   const [formType, setFormType] = useState<TaxFormType>("1099-div");
@@ -86,7 +88,7 @@ export function TaxDocumentsPage() {
   }
 
   async function handleDelete(doc: TaxDocument) {
-    if (!window.confirm(`Delete this imported ${taxFormTypeLabel(doc.form_type)}?`)) return;
+    if (!(await confirm(`Delete this imported ${taxFormTypeLabel(doc.form_type)}?`))) return;
     setError(null);
     try {
       await api.deleteTaxDocument(doc.id);

@@ -3,6 +3,7 @@ import { api } from "../api/client";
 import type { LifeEvent, LifeEventRequest } from "../api/types";
 import { LifeEventForm } from "../components/LifeEventForm";
 import { Alert, Button, Card } from "../components/ui";
+import { useConfirmDialog } from "../components/ConfirmDialog";
 import { formatCurrency } from "../data/format";
 import {
   directionLabel,
@@ -17,6 +18,7 @@ export function LifeEventsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [editing, setEditing] = useState<Editing>(null);
+  const { confirm } = useConfirmDialog();
 
   async function refresh() {
     try {
@@ -43,7 +45,7 @@ export function LifeEventsPage() {
   }
 
   async function handleDelete(item: LifeEvent) {
-    if (!window.confirm(`Delete "${item.name}"?`)) return;
+    if (!(await confirm(`Delete "${item.name}"?`))) return;
     setError(null);
     try {
       await api.deleteLifeEvent(item.id);

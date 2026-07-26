@@ -292,6 +292,7 @@ mod tests {
                 taxable_income: 0.0,
                 federal_ordinary_tax: 0.0,
                 federal_capital_gains_tax: 0.0,
+                early_withdrawal_penalty: 0.0,
                 federal_tax: 0.0,
                 state_taxable_income: 0.0,
                 state_standard_deduction: 0.0,

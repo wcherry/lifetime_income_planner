@@ -3,6 +3,7 @@ import { api } from "../api/client";
 import type { IncomeRequest, IncomeSource } from "../api/types";
 import { IncomeForm } from "../components/IncomeForm";
 import { Alert, Button, Card } from "../components/ui";
+import { useConfirmDialog } from "../components/ConfirmDialog";
 import { formatCurrency } from "../data/format";
 import { incomeOwnerLabel, incomeTypeLabel, taxabilityLabel } from "../data/income";
 
@@ -13,6 +14,7 @@ export function IncomePage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [editing, setEditing] = useState<Editing>(null);
+  const { confirm } = useConfirmDialog();
 
   async function refresh() {
     try {
@@ -39,7 +41,7 @@ export function IncomePage() {
   }
 
   async function handleDelete(item: IncomeSource) {
-    if (!window.confirm(`Delete "${item.name}"?`)) return;
+    if (!(await confirm(`Delete "${item.name}"?`))) return;
     setError(null);
     try {
       await api.deleteIncome(item.id);

@@ -4,6 +4,7 @@ import type { Account, AccountRequest } from "../api/types";
 import { AccountForm } from "../components/AccountForm";
 import { PlaidConnections } from "../components/PlaidConnections";
 import { Alert, Button, Card } from "../components/ui";
+import { useConfirmDialog } from "../components/ConfirmDialog";
 import { accountTypeLabel, categoryLabel, formatCurrency, ownerLabel } from "../data/accounts";
 
 type Editing = { mode: "new" } | { mode: "edit"; account: Account } | null;
@@ -13,6 +14,7 @@ export function AccountsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [editing, setEditing] = useState<Editing>(null);
+  const { confirm } = useConfirmDialog();
 
   async function refresh() {
     try {
@@ -39,7 +41,7 @@ export function AccountsPage() {
   }
 
   async function handleDelete(account: Account) {
-    if (!window.confirm(`Delete "${account.name}"? This cannot be undone.`)) return;
+    if (!(await confirm(`Delete "${account.name}"? This cannot be undone.`))) return;
     setError(null);
     try {
       await api.deleteAccount(account.id);

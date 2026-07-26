@@ -54,6 +54,7 @@ diesel::table! {
         aca_benchmark_annual_premium -> Double,
         withdrawal_strategy -> Text,
         medicare_part_b_annual_premium -> Double,
+        avoid_early_withdrawal_penalty -> Bool,
     }
 }
 

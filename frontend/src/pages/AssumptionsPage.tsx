@@ -15,11 +15,16 @@ const DEFAULTS: AssumptionsRequest = {
   withdrawal_strategy: "conventional",
   aca_benchmark_annual_premium: 0,
   medicare_part_b_annual_premium: 2_220,
+  avoid_early_withdrawal_penalty: false,
 };
 
 const WITHDRAWAL_STRATEGY_OPTIONS: { value: WithdrawalStrategy; label: string }[] = [
   { value: "conventional", label: "Conventional (taxable → tax-deferred → tax-free)" },
   { value: "tax_optimized", label: "Tax-optimized (minimize tax at the margin each year)" },
+  {
+    value: "maximize_income",
+    label: "Maximize income (simulate bracket-filling withdrawals to reduce future RMD tax)",
+  },
 ];
 
 /** Parse an optional year input; blank -> null. */
@@ -53,12 +58,12 @@ export function AssumptionsPage() {
             withdrawal_strategy: a.withdrawal_strategy,
             aca_benchmark_annual_premium: a.aca_benchmark_annual_premium,
             medicare_part_b_annual_premium: a.medicare_part_b_annual_premium,
+            avoid_early_withdrawal_penalty: a.avoid_early_withdrawal_penalty,
           });
           setUsingDefaults(a.is_default);
         }
       } catch (err) {
-        if (active)
-          setError(err instanceof Error ? err.message : "Failed to load assumptions");
+        if (active) setError(err instanceof Error ? err.message : "Failed to load assumptions");
       } finally {
         if (active) setLoading(false);
       }
@@ -69,10 +74,7 @@ export function AssumptionsPage() {
     };
   }, []);
 
-  function update<K extends keyof AssumptionsRequest>(
-    key: K,
-    value: AssumptionsRequest[K],
-  ) {
+  function update<K extends keyof AssumptionsRequest>(key: K, value: AssumptionsRequest[K]) {
     setForm((f) => ({ ...f, [key]: value }));
     setSaved(false);
   }
@@ -94,6 +96,7 @@ export function AssumptionsPage() {
         withdrawal_strategy: form.withdrawal_strategy,
         aca_benchmark_annual_premium: Number(form.aca_benchmark_annual_premium),
         medicare_part_b_annual_premium: Number(form.medicare_part_b_annual_premium),
+        avoid_early_withdrawal_penalty: form.avoid_early_withdrawal_penalty,
       };
       await api.saveAssumptions(payload);
       setSaved(true);
@@ -110,8 +113,8 @@ export function AssumptionsPage() {
   return (
     <Card title="Inflation & ROI assumptions">
       <p className="muted">
-        These rates drive every projection. We start you with reasonable
-        defaults — adjust them to match your own outlook.
+        These rates drive every projection. We start you with reasonable defaults — adjust them to
+        match your own outlook.
       </p>
       <form onSubmit={onSubmit}>
         {error && <Alert kind="error">{error}</Alert>}
@@ -145,9 +148,7 @@ export function AssumptionsPage() {
               type="number"
               step="0.1"
               value={form.investment_return_rate}
-              onChange={(e) =>
-                update("investment_return_rate", Number(e.target.value))
-              }
+              onChange={(e) => update("investment_return_rate", Number(e.target.value))}
               required
             />
           </Field>
@@ -164,9 +165,7 @@ export function AssumptionsPage() {
               type="number"
               step="0.1"
               value={form.healthcare_inflation_rate}
-              onChange={(e) =>
-                update("healthcare_inflation_rate", Number(e.target.value))
-              }
+              onChange={(e) => update("healthcare_inflation_rate", Number(e.target.value))}
               required
             />
           </Field>
@@ -180,9 +179,7 @@ export function AssumptionsPage() {
               type="number"
               step="0.1"
               value={form.social_security_cola_rate}
-              onChange={(e) =>
-                update("social_security_cola_rate", Number(e.target.value))
-              }
+              onChange={(e) => update("social_security_cola_rate", Number(e.target.value))}
               required
             />
           </Field>
@@ -249,9 +246,12 @@ export function AssumptionsPage() {
         <p className="muted">
           Which order to draw from your accounts each year. <strong>Conventional</strong> drains
           taxable accounts fully before touching tax-deferred, then tax-free — the standard rule of
-          thumb. <strong>Tax-optimized</strong> also realizes the lowest-gain taxable lots first, and
-          in years where realizing a taxable gain would cost more than an equivalent ordinary
-          withdrawal, draws from tax-deferred accounts first instead.
+          thumb. <strong>Tax-optimized</strong> also realizes the lowest-gain taxable lots first,
+          and in years where realizing a taxable gain would cost more than an equivalent ordinary
+          withdrawal, draws from tax-deferred accounts first instead.{" "}
+          <strong>Maximize income</strong> builds on tax-optimized: it simulates several levels of
+          voluntary pre-RMD tax-deferred withdrawals that fill a low bracket today, and keeps
+          whichever level leaves the most after-tax lifetime income once RMDs are eventually forced.
         </p>
 
         <div className="grid-2">
@@ -259,9 +259,7 @@ export function AssumptionsPage() {
             <Select
               id="withdrawal-strategy"
               value={form.withdrawal_strategy}
-              onChange={(e) =>
-                update("withdrawal_strategy", e.target.value as WithdrawalStrategy)
-              }
+              onChange={(e) => update("withdrawal_strategy", e.target.value as WithdrawalStrategy)}
             >
               {WITHDRAWAL_STRATEGY_OPTIONS.map((o) => (
                 <option key={o.value} value={o.value}>
@@ -272,14 +270,29 @@ export function AssumptionsPage() {
           </Field>
         </div>
 
+        <label className="checkbox-row">
+          <input
+            type="checkbox"
+            checked={form.avoid_early_withdrawal_penalty}
+            onChange={(e) => update("avoid_early_withdrawal_penalty", e.target.checked)}
+          />
+          Don't incur penalties
+        </label>
+        <p className="muted">
+          Traditional IRA and 401(k) withdrawals taken before age 59½ owe a 10% early-withdrawal
+          penalty. When checked, the planner never draws from those accounts before then — even if
+          spending goes unfunded as a result — instead of paying the penalty. Roth conversions are
+          unaffected either way.
+        </p>
+
         <h3 className="assumptions-subhead">ACA health insurance subsidy</h3>
         <p className="muted">
           Before Medicare (age 65), a marketplace plan may qualify for a premium tax credit that
-          caps what you pay based on your income. Enter your <strong>benchmark premium</strong> — the
-          annual cost of the second-lowest-cost silver plan for your household (from HealthCare.gov
-          or your state exchange) — and the planner estimates the subsidy each pre-Medicare year, net
-          of the income your withdrawals and Roth conversions create. Set it to $0 to skip ACA
-          modeling. It grows with your healthcare inflation rate.
+          caps what you pay based on your income. Enter your <strong>benchmark premium</strong> —
+          the annual cost of the second-lowest-cost silver plan for your household (from
+          HealthCare.gov or your state exchange) — and the planner estimates the subsidy each
+          pre-Medicare year, net of the income your withdrawals and Roth conversions create. Set it
+          to $0 to skip ACA modeling. It grows with your healthcare inflation rate.
         </p>
 
         <div className="grid-2">
@@ -320,9 +333,7 @@ export function AssumptionsPage() {
               step="100"
               min="0"
               value={form.medicare_part_b_annual_premium}
-              onChange={(e) =>
-                update("medicare_part_b_annual_premium", Number(e.target.value))
-              }
+              onChange={(e) => update("medicare_part_b_annual_premium", Number(e.target.value))}
               required
             />
           </Field>

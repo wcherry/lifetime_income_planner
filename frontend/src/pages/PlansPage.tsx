@@ -2,6 +2,7 @@ import { useEffect, useState, type FormEvent } from "react";
 import { api } from "../api/client";
 import type { Plan, PlanVersion } from "../api/types";
 import { Alert, Button, Card, Field, TextInput } from "../components/ui";
+import { useConfirmDialog } from "../components/ConfirmDialog";
 import { planSummary } from "../data/plans";
 
 function formatDate(iso: string): string {
@@ -35,6 +36,7 @@ export function PlansPage() {
   const [historyOpenId, setHistoryOpenId] = useState<string | null>(null);
   const [versionsByPlan, setVersionsByPlan] = useState<Record<string, PlanVersion[]>>({});
   const [versionsLoading, setVersionsLoading] = useState<string | null>(null);
+  const { confirm, prompt } = useConfirmDialog();
 
   async function refresh() {
     try {
@@ -69,10 +71,10 @@ export function PlansPage() {
 
   async function handleLoad(plan: Plan) {
     if (
-      !window.confirm(
+      !(await confirm(
         `Load "${plan.name}"? This replaces your current profile, accounts, income, ` +
           `spending, life events, and assumptions with this saved plan.`,
-      )
+      ))
     )
       return;
     setError(null);
@@ -90,7 +92,7 @@ export function PlansPage() {
 
   async function handleClone(plan: Plan) {
     const suggested = `${plan.name} copy`;
-    const next = window.prompt("Name for the cloned scenario", suggested);
+    const next = await prompt("Name for the cloned scenario", suggested);
     if (next == null) return;
     const trimmed = next.trim();
     setError(null);
@@ -130,10 +132,10 @@ export function PlansPage() {
 
   async function handleUpdateSnapshot(plan: Plan) {
     if (
-      !window.confirm(
+      !(await confirm(
         `Refresh "${plan.name}" with your current working data? The scenario's previous data ` +
           `is kept in its version history, not lost.`,
-      )
+      ))
     )
       return;
     setError(null);
@@ -153,10 +155,10 @@ export function PlansPage() {
 
   async function handleRestore(plan: Plan, version: PlanVersion) {
     if (
-      !window.confirm(
+      !(await confirm(
         `Restore "${plan.name}" to its ${formatDateTime(version.created_at)} version? ` +
           `The scenario's current data is kept in its version history, not lost.`,
-      )
+      ))
     )
       return;
     setError(null);
@@ -175,7 +177,7 @@ export function PlansPage() {
   }
 
   async function handleRename(plan: Plan) {
-    const next = window.prompt("Rename plan", plan.name);
+    const next = await prompt("Rename plan", plan.name);
     if (next == null) return;
     const trimmed = next.trim();
     if (trimmed === "" || trimmed === plan.name) return;
@@ -190,7 +192,7 @@ export function PlansPage() {
   }
 
   async function handleDelete(plan: Plan) {
-    if (!window.confirm(`Delete saved plan "${plan.name}"? This cannot be undone.`)) return;
+    if (!(await confirm(`Delete saved plan "${plan.name}"? This cannot be undone.`))) return;
     setError(null);
     setNotice(null);
     try {

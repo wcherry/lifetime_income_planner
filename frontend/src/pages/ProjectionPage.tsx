@@ -14,7 +14,17 @@ import type {
   YearProjection,
   YearTax,
 } from "../api/types";
-import { Alert, Button, Card, Field, Select, TextInput } from "../components/ui";
+import {
+  Alert,
+  Button,
+  Card,
+  Field,
+  Modal,
+  ModalFieldRow,
+  Select,
+  TextInput,
+} from "../components/ui";
+import { useConfirmDialog } from "../components/ConfirmDialog";
 import { MonteCarloChart } from "../components/MonteCarloChart";
 import { NetWorthChart } from "../components/NetWorthChart";
 import {
@@ -36,6 +46,7 @@ export function ProjectionPage() {
   const [needsProfile, setNeedsProfile] = useState(false);
   const [downloadError, setDownloadError] = useState<string | null>(null);
   const [downloading, setDownloading] = useState(false);
+  const [detailYear, setDetailYear] = useState<YearProjection | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -85,9 +96,11 @@ export function ProjectionPage() {
   const currentTax = annual[0]?.tax;
   // Roth conversions (feature 6) only surface once the strategy is in use.
   const showRoth = summary.total_lifetime_roth_conversions > 0;
-  // The optimized strategy (feature 9) reorders accounts per year; only worth
-  // a dedicated column once it's actually in use.
-  const showWithdrawalOrder = assumptions.withdrawal_strategy === "tax_optimized";
+  // The optimized and maximize-income strategies (features 9, 9b) reorder
+  // accounts per year; only worth a dedicated column once one is in use.
+  const showWithdrawalOrder =
+    assumptions.withdrawal_strategy === "tax_optimized" ||
+    assumptions.withdrawal_strategy === "maximize_income";
   // ACA subsidy (Phase 3, feature 1): show the detail whenever a benchmark
   // premium is configured, and the lifetime tile once any subsidy is received.
   const showAca = assumptions.aca_benchmark_annual_premium > 0;
@@ -256,15 +269,6 @@ export function ProjectionPage() {
         />
       )}
 
-      {/* Multi-year tax report + CSV export (Phase 2, feature 8) */}
-      <TaxReportCard
-        annual={annual}
-        showWithdrawalOrder={showWithdrawalOrder}
-        onDownload={handleDownloadTaxReport}
-        downloading={downloading}
-        downloadError={downloadError}
-      />
-
       {/* ACA subsidy for the current year (Phase 3, feature 1) */}
       {showAca && currentAca && <AcaSubsidyCard aca={currentAca} year={projection.start_year} />}
 
@@ -273,6 +277,7 @@ export function ProjectionPage() {
 
       {/* Annual projection table (Phase 1, feature 8) */}
       <Card title="Year-by-year projection" collapsible>
+        <p className="muted">Click any row for that year's full breakdown.</p>
         <div className="table-scroll">
           <table className="proj-table">
             <thead>
@@ -296,7 +301,11 @@ export function ProjectionPage() {
               {annual.map((y) => {
                 const rmdExcess = rmdExceedsSpendingBy(y);
                 return (
-                  <tr key={y.year} className={y.shortfall > 0 ? "row-warn" : ""}>
+                  <tr
+                    key={y.year}
+                    className={`row-clickable${y.shortfall > 0 ? " row-warn" : ""}`}
+                    onClick={() => setDetailYear(y)}
+                  >
                     <td>{y.year}</td>
                     <td>
                       {y.primary_age}
@@ -368,6 +377,17 @@ export function ProjectionPage() {
           </table>
         </div>
       </Card>
+
+      {/* Multi-year tax report + CSV export (Phase 2, feature 8) */}
+      <TaxReportCard
+        annual={annual}
+        showWithdrawalOrder={showWithdrawalOrder}
+        onDownload={handleDownloadTaxReport}
+        downloading={downloading}
+        downloadError={downloadError}
+      />
+
+      {detailYear && <YearDetailModal year={detailYear} onClose={() => setDetailYear(null)} />}
     </div>
   );
 }
@@ -382,7 +402,7 @@ function EndBalanceCell({ year }: { year: YearProjection }) {
   const accounts = year.account_balances;
 
   return (
-    <td className="num end-balance-cell">
+    <td className="num end-balance-cell" onClick={(e) => e.stopPropagation()}>
       <button
         type="button"
         className="end-balance-toggle"
@@ -439,7 +459,7 @@ function WithdrawalCell({ year }: { year: YearProjection }) {
   const sources = year.withdrawal_sources.filter((s) => s.amount > 0);
 
   return (
-    <td className="num withdrawal-cell">
+    <td className="num withdrawal-cell" onClick={(e) => e.stopPropagation()}>
       <button
         type="button"
         className="withdrawal-toggle"
@@ -471,6 +491,218 @@ function WithdrawalCell({ year }: { year: YearProjection }) {
         </div>
       )}
     </td>
+  );
+}
+
+/**
+ * A single year's full breakdown, opened by clicking a row in the year-by-year
+ * table: cash flow, which accounts the withdrawal came from, the tax buildup,
+ * ACA/Medicare/IRMAA detail, ending balances, and any life events or
+ * milestones — everything the table's columns and cell dropdowns show
+ * piecemeal, in one place.
+ */
+function YearDetailModal({ year: y, onClose }: { year: YearProjection; onClose: () => void }) {
+  const sources = y.withdrawal_sources.filter((s) => s.amount > 0);
+  const hasEvents = y.life_events.length > 0 || y.milestones.length > 0;
+  const rmdExcess = rmdExceedsSpendingBy(y);
+
+  return (
+    <Modal title={`Year detail · ${y.year}`} onClose={onClose} wide>
+      <div className="modal-section">
+        <h4>Cash flow</h4>
+        <div className="modal-field-list">
+          <ModalFieldRow
+            label="Age"
+            value={y.spouse_age != null ? `${y.primary_age} / ${y.spouse_age}` : y.primary_age}
+          />
+          <ModalFieldRow label="Starting balance" value={formatCurrency(y.starting_balance)} />
+          <ModalFieldRow label="Income" value={formatCurrency(y.income)} />
+          {y.aca.subsidy > 0 && (
+            <ModalFieldRow
+              label="ACA subsidy"
+              value={formatCurrency(y.aca.subsidy)}
+              hint="tax-free cash — reduces the amount withdrawn below"
+            />
+          )}
+          <ModalFieldRow label="Spending" value={formatCurrency(y.spending)} />
+          {y.medicare_premiums > 0 && (
+            <ModalFieldRow label="Medicare premiums" value={formatCurrency(y.medicare_premiums)} />
+          )}
+          {y.irmaa_surcharge > 0 && (
+            <ModalFieldRow label="IRMAA surcharge" value={formatCurrency(y.irmaa_surcharge)} />
+          )}
+          {y.life_events_net !== 0 && (
+            <ModalFieldRow
+              label="Life events (net)"
+              value={formatSignedCurrency(y.life_events_net)}
+            />
+          )}
+          <ModalFieldRow label="Growth" value={formatCurrency(y.growth)} />
+          <ModalFieldRow label="Withdrawals" value={formatCurrency(y.withdrawals)} />
+          {y.rmd_amount > 0 && (
+            <ModalFieldRow
+              label="Required minimum distribution"
+              value={formatCurrency(y.rmd_amount)}
+            />
+          )}
+          {y.roth_conversion > 0 && (
+            <ModalFieldRow label="Roth conversion" value={formatCurrency(y.roth_conversion)} />
+          )}
+          <ModalFieldRow label="Taxes" value={formatCurrency(y.taxes)} />
+          <ModalFieldRow label="Ending balance" value={formatCurrency(y.ending_balance)} />
+          {y.shortfall > 0 && (
+            <ModalFieldRow
+              label="Shortfall"
+              value={<span className="amount-expense">{formatCurrency(y.shortfall)}</span>}
+            />
+          )}
+          {rmdExcess > 0 && (
+            <ModalFieldRow
+              label="RMD over spending need"
+              value={<span className="amount-expense">{formatCurrency(rmdExcess)}</span>}
+            />
+          )}
+        </div>
+      </div>
+
+      {sources.length > 0 && (
+        <div className="modal-section">
+          <h4>Withdrawal sources</h4>
+          {y.tax.early_withdrawal_penalty > 0 && (
+            <p className="muted tax-hint">
+              Includes a tax-deferred withdrawal taken before age 59½ — see the 10% early withdrawal
+              penalty under Taxes below.
+            </p>
+          )}
+          <ul className="account-balance-list">
+            {sources.map((s) => (
+              <li className="account-balance-row" key={s.account_id}>
+                <span className="account-balance-name">{s.account_name}</span>
+                <span className="muted quarter-cat">{categoryLabel(s.category)}</span>
+                <span className="account-balance-amt">{formatCurrency(s.amount)}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      <div className="modal-section">
+        <h4>Taxes</h4>
+        <dl className="tax-lines">
+          <TaxLine label="Ordinary income" value={y.tax.ordinary_income} />
+          <TaxLine label="Qualified dividends" value={y.tax.qualified_dividends} />
+          <TaxLine label="Capital gains" value={y.tax.capital_gains} />
+          <TaxLine
+            label="Social Security (taxable)"
+            value={y.tax.taxable_social_security}
+            hint={
+              y.tax.social_security_benefits > 0
+                ? `of ${formatCurrency(y.tax.social_security_benefits)} received`
+                : undefined
+            }
+          />
+          <TaxLine label="MAGI" value={y.tax.magi} />
+          <TaxLine label="Taxable income" value={y.tax.taxable_income} />
+          {y.tax.early_withdrawal_penalty > 0 && (
+            <TaxLine
+              label="Early withdrawal penalty (10%)"
+              value={y.tax.early_withdrawal_penalty}
+              hint="IRA/401(k) draw before age 59½ — included in federal tax below"
+            />
+          )}
+          <TaxLine label="Federal tax" value={y.tax.federal_tax} />
+          <TaxLine label="State tax" value={y.tax.state_tax} />
+          <TaxLine label="Total tax" value={y.tax.total_tax} strong />
+          <div className="tax-line">
+            <dt>Effective rate</dt>
+            <dd>{formatRate(y.tax.effective_rate)}</dd>
+          </div>
+          <div className="tax-line">
+            <dt>Marginal rate (federal + state)</dt>
+            <dd>{formatRate(y.tax.marginal_rate + y.tax.state_marginal_rate)}</dd>
+          </div>
+        </dl>
+      </div>
+
+      {y.aca.eligible && (
+        <div className="modal-section">
+          <h4>ACA health insurance subsidy</h4>
+          <dl className="tax-lines">
+            <div className="tax-line">
+              <dt>Income as % of poverty line</dt>
+              <dd>{y.aca.fpl_percent.toFixed(0)}%</dd>
+            </div>
+            <TaxLine
+              label="Expected contribution"
+              value={y.aca.expected_contribution}
+              hint={`${formatRate(y.aca.applicable_percentage)} of MAGI`}
+            />
+            <TaxLine label="Benchmark silver premium" value={y.aca.benchmark_premium} />
+            <TaxLine label="Premium tax credit (subsidy)" value={y.aca.subsidy} strong />
+          </dl>
+        </div>
+      )}
+
+      {(y.medicare_premiums > 0 || y.irmaa.applies) && (
+        <div className="modal-section">
+          <h4>Medicare</h4>
+          <dl className="tax-lines">
+            {y.medicare_premiums > 0 && (
+              <TaxLine label="Part B premiums" value={y.medicare_premiums} />
+            )}
+            {y.irmaa.applies && (
+              <>
+                <TaxLine label={`MAGI in ${y.irmaa.lookback_year}`} value={y.irmaa.lookback_magi} />
+                <div className="tax-line">
+                  <dt>Enrolled household members</dt>
+                  <dd>{y.irmaa.enrolled_count}</dd>
+                </div>
+                <TaxLine label="IRMAA surcharge" value={y.irmaa.total_surcharge} strong />
+              </>
+            )}
+          </dl>
+        </div>
+      )}
+
+      <div className="modal-section">
+        <h4>Ending account balances</h4>
+        <ul className="account-balance-list">
+          {y.account_balances.map((a) => (
+            <li className="account-balance-row" key={a.account_id}>
+              <span className="account-balance-name">{a.account_name}</span>
+              <span className="account-balance-amt">{formatCurrency(a.ending_balance)}</span>
+              <span
+                className={`account-balance-delta ${
+                  a.change > 0
+                    ? "account-balance-delta-up"
+                    : a.change < 0
+                      ? "account-balance-delta-down"
+                      : "account-balance-delta-flat"
+                }`}
+              >
+                {a.change > 0 && "▲ "}
+                {a.change < 0 && "▼ "}
+                {formatSignedCurrency(a.change)}
+              </span>
+            </li>
+          ))}
+        </ul>
+      </div>
+
+      {hasEvents && (
+        <div className="modal-section">
+          <h4>Life events &amp; milestones</h4>
+          <div className="modal-field-list">
+            {y.life_events.map((e, i) => (
+              <ModalFieldRow key={`e${i}`} label={e.name} value={formatSignedCurrency(e.amount)} />
+            ))}
+            {y.milestones.map((m, i) => (
+              <ModalFieldRow key={`m${i}`} label={m.label} value={m.detail} />
+            ))}
+          </div>
+        </div>
+      )}
+    </Modal>
   );
 }
 
@@ -727,7 +959,9 @@ const GOAL_OPTIONS: { value: OptimizationGoal; label: string }[] = [
 ];
 
 function strategyLabel(s: WithdrawalStrategy): string {
-  return s === "tax_optimized" ? "Tax-optimized" : "Conventional";
+  if (s === "tax_optimized") return "Tax-optimized";
+  if (s === "maximize_income") return "Maximize income";
+  return "Conventional";
 }
 
 function goalMetricLabel(goal: OptimizationGoal): string {
@@ -775,6 +1009,7 @@ function OptimizeCard() {
   const [error, setError] = useState<string | null>(null);
   const [applying, setApplying] = useState(false);
   const [applied, setApplied] = useState(false);
+  const { confirm } = useConfirmDialog();
 
   async function handleRun() {
     setError(null);
@@ -796,9 +1031,9 @@ function OptimizeCard() {
         ? formatCurrency(candidate.roth_conversion_ceiling) + " Roth ceiling"
         : "no Roth conversions";
     if (
-      !window.confirm(
+      !(await confirm(
         `Apply ${strategyLabel(candidate.withdrawal_strategy)} withdrawals with ${ceilingText} to your saved assumptions?`,
-      )
+      ))
     )
       return;
     setApplying(true);
@@ -816,6 +1051,7 @@ function OptimizeCard() {
         withdrawal_strategy: candidate.withdrawal_strategy,
         aca_benchmark_annual_premium: current.aca_benchmark_annual_premium,
         medicare_part_b_annual_premium: current.medicare_part_b_annual_premium,
+        avoid_early_withdrawal_penalty: current.avoid_early_withdrawal_penalty,
       });
       setApplied(true);
     } catch (err) {
@@ -1105,6 +1341,16 @@ function TaxBreakdownCard({
               <td className="num">{formatCurrency(tax.state_tax)}</td>
               <td className="num">{formatCurrency(tax.total_tax)}</td>
             </tr>
+            {tax.early_withdrawal_penalty > 0 && (
+              <tr>
+                <td title="10% IRS penalty (IRC §72(t)) on tax-deferred withdrawals taken before age 59½ — already included in income tax above.">
+                  Early withdrawal penalty (10%)
+                </td>
+                <td className="num">{formatCurrency(tax.early_withdrawal_penalty)}</td>
+                <td className="num muted">—</td>
+                <td className="num">{formatCurrency(tax.early_withdrawal_penalty)}</td>
+              </tr>
+            )}
             <tr className="tax-compare-reserved">
               <td>
                 Property tax <span className="muted">· coming soon</span>

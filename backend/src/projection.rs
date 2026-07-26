@@ -24,6 +24,10 @@ use crate::models::{
 };
 use crate::tax::{compute_taxes, FilingStatusKind, TaxInput, TaxResult, TaxTables};
 
+/// IRS additional tax (IRC §72(t)) on tax-deferred withdrawals taken before
+/// the owner reaches the "Penalty-free withdrawals" milestone (age 59½).
+const EARLY_WITHDRAWAL_PENALTY_RATE: f64 = 0.10;
+
 /// Everything the engine needs to build a projection. Rates are percentages
 /// (e.g. `2.5` means 2.5%).
 pub struct ProjectionInputs<'a> {
@@ -56,6 +60,12 @@ pub struct ProjectionInputs<'a> {
     /// Applied automatically once each person turns 65 and grows with the
     /// healthcare inflation rate over the plan.
     pub medicare_part_b_annual_premium: f64,
+    /// "Don't incur penalties" (withdrawal sequencing): when true, tax-deferred
+    /// accounts are excluded from the drawdown order entirely for an owner who
+    /// hasn't reached the "Penalty-free withdrawals" milestone (age 59½),
+    /// rather than drawing from them and paying the 10% early-withdrawal
+    /// penalty. Roth conversions are unaffected — they aren't withdrawals.
+    pub avoid_early_withdrawal_penalty: bool,
     /// Reference tax parameters (brackets, deductions, state rates), loaded from
     /// the database and read by the tax engine.
     pub tax_tables: TaxTables,
@@ -76,14 +86,47 @@ enum WithdrawalStrategyKind {
     /// where realizing a gain costs more at the margin than an equivalent
     /// ordinary withdrawal, draws tax-deferred funds before taxable ones.
     TaxOptimized,
+    /// Tax-optimized sequencing plus a search over bracket-filling
+    /// acceleration levels (feature 9b) — see [`run_projection_inner`].
+    MaximizeIncome,
 }
 
 impl WithdrawalStrategyKind {
     fn from_str(s: &str) -> Self {
         match s {
             "tax_optimized" => WithdrawalStrategyKind::TaxOptimized,
+            "maximize_income" => WithdrawalStrategyKind::MaximizeIncome,
             _ => WithdrawalStrategyKind::Conventional,
         }
+    }
+}
+
+/// Bracket-fill targets searched by the maximize-income strategy (feature
+/// 9b): each `Some(n)` means "voluntarily draw tax-deferred dollars every
+/// year to fill ordinary bracket `n` and below" (`n = 0` is the lowest
+/// bracket), before RMDs would otherwise force the issue, possibly at a
+/// higher rate. `None` is the do-nothing candidate — the same behavior as
+/// `TaxOptimized`. Each candidate is run as a full, independent projection;
+/// the one with the greatest total lifetime after-tax cash wins.
+const MAXIMIZE_INCOME_BRACKET_TARGETS: [Option<usize>; 5] =
+    [None, Some(0), Some(1), Some(2), Some(3)];
+
+/// The objective the maximize-income strategy (feature 9b) searches for.
+/// Spending, income, and Medicare/IRMAA costs are plan inputs that don't vary
+/// between bracket-fill candidates, and every candidate fully funds the same
+/// spending plan unless accounts run dry — so, holding consumption fixed, the
+/// household's total lifetime income is maximized by whichever candidate:
+///
+/// 1. Never triggers a depletion that a less aggressive candidate would have
+///    avoided (running out of money is strictly worse than any paper estate
+///    difference), then
+/// 2. Leaves the largest after-tax ending balance — i.e. lost the least of
+///    the household's resources to lifetime tax along the way.
+fn maximize_income_score(summary: &ProjectionSummary) -> f64 {
+    if summary.depletion_year.is_some() {
+        f64::MIN
+    } else {
+        summary.projected_ending_balance
     }
 }
 
@@ -457,7 +500,7 @@ fn build_milestones(profile: &Profile, start_year: i32, end_year: i32) -> HashMa
 
 /// Run the projection. Always returns at least the current year.
 pub fn run_projection(inp: &ProjectionInputs) -> ProjectionResponse {
-    run_projection_inner(inp, None)
+    run_projection_dispatch(inp, None)
 }
 
 /// Run the projection with a Monte Carlo per-year investment-return shock
@@ -470,12 +513,44 @@ pub fn run_projection_with_shocks(
     inp: &ProjectionInputs,
     return_shocks: &[f64],
 ) -> ProjectionResponse {
-    run_projection_inner(inp, Some(return_shocks))
+    run_projection_dispatch(inp, Some(return_shocks))
 }
 
+/// Dispatches to a single projection pass, except for the maximize-income
+/// strategy (feature 9b), which instead runs one pass per candidate
+/// acceleration level and keeps whichever produced the greatest total
+/// lifetime after-tax cash — the "runs simulations" step that lets the
+/// strategy see the future RMD/tax consequence of today's withdrawal, rather
+/// than only reacting to the RMD once it comes due.
+fn run_projection_dispatch(
+    inp: &ProjectionInputs,
+    return_shocks: Option<&[f64]>,
+) -> ProjectionResponse {
+    if WithdrawalStrategyKind::from_str(&inp.withdrawal_strategy)
+        != WithdrawalStrategyKind::MaximizeIncome
+    {
+        return run_projection_inner(inp, return_shocks, None);
+    }
+
+    MAXIMIZE_INCOME_BRACKET_TARGETS
+        .into_iter()
+        .map(|target| run_projection_inner(inp, return_shocks, target))
+        .max_by(|a, b| {
+            maximize_income_score(&a.summary)
+                .partial_cmp(&maximize_income_score(&b.summary))
+                .unwrap_or(std::cmp::Ordering::Equal)
+        })
+        .expect("MAXIMIZE_INCOME_BRACKET_TARGETS is non-empty")
+}
+
+/// `bracket_fill_target` (feature 9b, maximize-income strategy only): when
+/// `Some(n)`, voluntarily draws tax-deferred dollars every year (beyond
+/// whatever spending and RMDs already require) to fill ordinary bracket `n`
+/// and below. Ignored for every other strategy.
 fn run_projection_inner(
     inp: &ProjectionInputs,
     return_shocks: Option<&[f64]>,
+    bracket_fill_target: Option<usize>,
 ) -> ProjectionResponse {
     let start_year = inp.current_year;
     let birth_year = inp.profile.date_of_birth.year();
@@ -493,6 +568,15 @@ fn run_projection_inner(
     }
 
     let spouse_birth_year = inp.profile.spouse_date_of_birth.map(|d| d.year());
+
+    // Same 59½ threshold as the "Penalty-free withdrawals" milestone below —
+    // computed once here so it can actually be priced into tax-deferred
+    // withdrawals, not just marked on the timeline.
+    let primary_penalty_free_year = milestone_year(inp.profile.date_of_birth, 59 * 12 + 6);
+    let spouse_penalty_free_year = inp
+        .profile
+        .spouse_date_of_birth
+        .and_then(|d| milestone_year(d, 59 * 12 + 6));
 
     let mut milestones = build_milestones(inp.profile, start_year, end_year);
 
@@ -540,8 +624,6 @@ fn run_projection_inner(
             )
             .then(a.cmp(&b))
     });
-    // Surplus is reinvested into the first drawdown account (taxable first).
-    let reinvest_target = order.first().copied();
     // Roth conversions (feature 6) land in the first tax-free account. Without
     // one there is nowhere to hold the converted dollars, so conversions are
     // skipped even if a ceiling is configured.
@@ -549,6 +631,22 @@ fn run_projection_inner(
         .iter()
         .copied()
         .find(|&i| inp.accounts[i].category == "tax_free");
+    // Surplus is reinvested into the first drawdown account (taxable first,
+    // then whatever's next in `order`). The maximize-income strategy (feature
+    // 9b) instead prefers taxable, then tax-free, over tax-deferred: its
+    // voluntary bracket-fill withdrawals must never land back in a
+    // tax-deferred account, since that would tax the same dollar today for no
+    // benefit (undoing the whole point of pulling it out early) rather than
+    // permanently moving it out of future RMDs' reach.
+    let taxable_dest = order
+        .iter()
+        .copied()
+        .find(|&i| inp.accounts[i].category == "taxable");
+    let reinvest_target = if withdrawal_strategy == WithdrawalStrategyKind::MaximizeIncome {
+        taxable_dest.or(roth_dest).or(order.first().copied())
+    } else {
+        order.first().copied()
+    };
 
     let current_net_worth: f64 = balances.iter().sum();
 
@@ -566,6 +664,7 @@ fn run_projection_inner(
     let mut total_medicare_premiums = 0.0;
     let mut total_irmaa_surcharges = 0.0;
     let mut total_rmd = 0.0;
+    let mut total_ss_benefits = 0.0;
     let mut depletion_year: Option<i32> = None;
 
     for year in start_year..=end_year {
@@ -753,6 +852,30 @@ fn run_projection_inner(
             }
         }
 
+        // Tax-deferred accounts owned by someone who hasn't reached the
+        // "Penalty-free withdrawals" milestone yet: draws from these owe the
+        // 10% early-withdrawal penalty. Joint-titled tax-deferred accounts are
+        // attributed to the primary owner, matching how RMDs treat them (see
+        // `tax_deferred_balance_for_owner`) — retirement accounts can't
+        // legally be jointly titled. Roth conversions are unaffected (IRC
+        // §72(t) exempts conversions from the penalty); they're applied via a
+        // separate balance transfer above, never through `plan_withdrawals`.
+        let penalized: Vec<bool> = inp
+            .accounts
+            .iter()
+            .map(|a| {
+                if a.category != "tax_deferred" {
+                    return false;
+                }
+                let free_year = if a.owner == "spouse" {
+                    spouse_penalty_free_year
+                } else {
+                    primary_penalty_free_year
+                };
+                year < free_year.unwrap_or(i32::MAX)
+            })
+            .collect();
+
         // ---- Withdrawal sequencing (Phase 2, feature 9) --------------------
         // Conventional sequencing (`order`, computed once above) always draws
         // taxable accounts fully before tax-deferred, then tax-free. The
@@ -763,7 +886,9 @@ fn run_projection_inner(
         // tax-deferred funds before taxable ones. Tax-free stays last either
         // way, preserving its growth for true shortfalls.
         let (withdrawal_order, withdrawal_order_label): (Vec<usize>, &'static str) =
-            if withdrawal_strategy == WithdrawalStrategyKind::TaxOptimized {
+            if withdrawal_strategy == WithdrawalStrategyKind::TaxOptimized
+                || withdrawal_strategy == WithdrawalStrategyKind::MaximizeIncome
+            {
                 optimized_withdrawal_order(
                     inp,
                     filing_status,
@@ -778,6 +903,45 @@ fn run_projection_inner(
             } else {
                 (order.clone(), "taxable_first")
             };
+
+        // "Don't incur penalties": drop penalized tax-deferred accounts from
+        // this year's drawdown order entirely, so spending-driven withdrawals
+        // and the maximize-income strategy's voluntary bracket-fill draws
+        // (both of which pull from `withdrawal_order` via `plan_withdrawals`)
+        // never touch them before the owner turns 59½. A forced RMD never
+        // conflicts with this — RMDs never begin before age 59½.
+        let withdrawal_order: Vec<usize> = if inp.avoid_early_withdrawal_penalty {
+            withdrawal_order.into_iter().filter(|&i| !penalized[i]).collect()
+        } else {
+            withdrawal_order
+        };
+
+        // ---- Bracket-filling withdrawal (Phase 2, feature 9b) -------------
+        // Maximize-income only: on top of whatever spending and RMDs already
+        // require, voluntarily draw tax-deferred dollars to fill
+        // `bracket_fill_target` and below. This shrinks the tax-deferred
+        // balance (and so future RMDs) while the withdrawal is still being
+        // taxed at today's rate, rather than waiting for a larger, possibly
+        // higher-bracket RMD later. The caller (`run_projection_dispatch`)
+        // tries several targets as full projections and keeps whichever
+        // yields the most lifetime after-tax cash.
+        let deferred_floor = if withdrawal_strategy == WithdrawalStrategyKind::MaximizeIncome {
+            let bracket_fill = plan_bracket_fill_withdrawal(
+                inp,
+                filing_status,
+                year,
+                seniors,
+                ordinary_income_sources + taxable_life_inflow + roth_conversion,
+                qualified_dividends,
+                ss_benefits,
+                &balances,
+                bracket_fill_target,
+                taxable_dest.is_some() || roth_dest.is_some(),
+            );
+            rmd_amount.max(bracket_fill)
+        } else {
+            rmd_amount
+        };
 
         // ---- ACA subsidy eligibility (Phase 3, feature 1) -----------------
         // The premium tax credit applies before Medicare: model it whenever a
@@ -807,14 +971,17 @@ fn run_projection_inner(
             let need = (tax_estimate - base_cash - subsidy).max(0.0);
             plan = plan_withdrawals(
                 need,
-                rmd_amount,
+                deferred_floor,
                 &balances,
                 &basis,
                 &withdrawal_order,
                 inp.accounts,
+                &penalized,
             );
             let ordinary_income =
                 ordinary_income_sources + taxable_life_inflow + roth_conversion + plan.tax_deferred;
+            let early_withdrawal_penalty =
+                plan.penalized_tax_deferred * EARLY_WITHDRAWAL_PENALTY_RATE;
             let input = TaxInput {
                 year,
                 filing_status,
@@ -825,6 +992,7 @@ fn run_projection_inner(
                 long_term_capital_gains: plan.capital_gains,
                 social_security_benefits: ss_benefits,
                 state: &inp.profile.state,
+                early_withdrawal_penalty,
             };
             tax = compute_taxes(&input, &inp.tax_tables);
 
@@ -935,6 +1103,7 @@ fn run_projection_inner(
         total_medicare_premiums += medicare_premiums;
         total_irmaa_surcharges += irmaa_surcharge;
         total_rmd += rmd_amount;
+        total_ss_benefits += ss_benefits;
         if year == start_year {
             first_year_tax = tax.total_tax;
         }
@@ -973,6 +1142,7 @@ fn run_projection_inner(
                 taxable_income: round2(tax.taxable_income),
                 federal_ordinary_tax: round2(tax.federal_ordinary_tax),
                 federal_capital_gains_tax: round2(tax.federal_capital_gains_tax),
+                early_withdrawal_penalty: round2(tax.early_withdrawal_penalty),
                 federal_tax: round2(tax.federal_tax),
                 state_taxable_income: round2(tax.state_taxable_income),
                 state_standard_deduction: round2(tax.state_standard_deduction),
@@ -1037,6 +1207,7 @@ fn run_projection_inner(
             withdrawal_strategy: inp.withdrawal_strategy.clone(),
             aca_benchmark_annual_premium: inp.aca_benchmark_annual_premium,
             medicare_part_b_annual_premium: inp.medicare_part_b_annual_premium,
+            avoid_early_withdrawal_penalty: inp.avoid_early_withdrawal_penalty,
             is_default: inp.assumptions_are_default,
         },
         summary: ProjectionSummary {
@@ -1053,6 +1224,7 @@ fn run_projection_inner(
             total_lifetime_medicare_premiums: round2(total_medicare_premiums),
             total_lifetime_irmaa_surcharges: round2(total_irmaa_surcharges),
             total_lifetime_rmd: round2(total_rmd),
+            total_lifetime_social_security: round2(total_ss_benefits),
             depletion_year,
         },
         annual,
@@ -1119,6 +1291,7 @@ fn optimized_withdrawal_order(
 ) -> (Vec<usize>, &'static str) {
     let baseline = compute_taxes(
         &TaxInput {
+            early_withdrawal_penalty: 0.0,
             year,
             filing_status,
             inflation_rate: inp.inflation_rate,
@@ -1233,6 +1406,7 @@ fn plan_roth_conversion(
     // as AGI grows, a second-order effect left as an approximation.
     let baseline = compute_taxes(
         &TaxInput {
+            early_withdrawal_penalty: 0.0,
             year,
             filing_status,
             inflation_rate: inp.inflation_rate,
@@ -1247,6 +1421,69 @@ fn plan_roth_conversion(
     );
     let target_agi = inp.roth_conversion_ceiling + baseline.standard_deduction;
     let room = (target_agi - baseline.adjusted_gross_income).max(0.0);
+    room.min(deferred_available)
+}
+
+/// Size this year's voluntary bracket-filling withdrawal for the
+/// maximize-income strategy (feature 9b): the room left between this year's
+/// baseline ordinary taxable income and the top of `target_bracket`, capped
+/// by the available tax-deferred balance. `None` (or a target already at or
+/// below the top the household already occupies) draws nothing. The baseline
+/// excludes withdrawal-driven income (the same approximation
+/// [`plan_roth_conversion`] makes) since the actual withdrawal plan is what
+/// this figure feeds into.
+#[allow(clippy::too_many_arguments)]
+fn plan_bracket_fill_withdrawal(
+    inp: &ProjectionInputs,
+    filing_status: FilingStatusKind,
+    year: i32,
+    seniors: u8,
+    baseline_ordinary_income: f64,
+    qualified_dividends: f64,
+    ss_benefits: f64,
+    balances: &[f64],
+    target_bracket: Option<usize>,
+    has_reinvest_destination: bool,
+) -> f64 {
+    let Some(target_bracket) = target_bracket else {
+        return 0.0;
+    };
+    // Without a taxable or tax-free account to hold the proceeds, this
+    // withdrawal would just be reinvested back into tax-deferred — taxing the
+    // same dollar today for nothing, rather than actually getting it out of
+    // future RMDs' reach. Nothing to gain, so don't draw it.
+    if !has_reinvest_destination {
+        return 0.0;
+    }
+    let deferred_available: f64 = (0..inp.accounts.len())
+        .filter(|&i| inp.accounts[i].category == "tax_deferred")
+        .map(|i| balances[i])
+        .sum();
+    if deferred_available <= 0.0 {
+        return 0.0;
+    }
+
+    let baseline = compute_taxes(
+        &TaxInput {
+            early_withdrawal_penalty: 0.0,
+            year,
+            filing_status,
+            inflation_rate: inp.inflation_rate,
+            seniors_65_plus: seniors,
+            ordinary_income: baseline_ordinary_income,
+            qualified_dividends,
+            long_term_capital_gains: 0.0,
+            social_security_benefits: ss_benefits,
+            state: &inp.profile.state,
+        },
+        &inp.tax_tables,
+    );
+    let ordinary_taxable = (baseline.taxable_income - qualified_dividends).max(0.0);
+    let target_ceiling = inp
+        .tax_tables
+        .ordinary_bracket_top(filing_status, year, inp.inflation_rate, target_bracket)
+        .unwrap_or(f64::INFINITY);
+    let room = (target_ceiling - ordinary_taxable).max(0.0);
     room.min(deferred_available)
 }
 
@@ -1337,6 +1574,10 @@ struct WithdrawalPlan {
     takes: Vec<(usize, f64)>,
     /// Total drawn from tax-deferred accounts (fully ordinary income).
     tax_deferred: f64,
+    /// Portion of `tax_deferred` drawn from an account whose owner hasn't
+    /// reached the age-59½ milestone yet — subject to the 10% early-
+    /// withdrawal penalty.
+    penalized_tax_deferred: f64,
     /// Realized long-term capital gains from taxable-account draws.
     capital_gains: f64,
     /// Amount of `need` that could not be raised (accounts exhausted).
@@ -1358,6 +1599,7 @@ fn plan_withdrawals(
     basis: &[f64],
     order: &[usize],
     accounts: &[Account],
+    penalized: &[bool],
 ) -> WithdrawalPlan {
     let mut plan = WithdrawalPlan::default();
     let mut raised = vec![0.0_f64; balances.len()];
@@ -1375,6 +1617,9 @@ fn plan_withdrawals(
         raised[idx] += take;
         if accounts[idx].category == "tax_deferred" {
             plan.tax_deferred += take;
+            if penalized[idx] {
+                plan.penalized_tax_deferred += take;
+            }
         }
     }
     plan.shortfall = remaining.max(0.0);
@@ -1395,6 +1640,9 @@ fn plan_withdrawals(
             }
             raised[idx] += take;
             plan.tax_deferred += take;
+            if penalized[idx] {
+                plan.penalized_tax_deferred += take;
+            }
             extra -= take;
         }
     }
@@ -1579,6 +1827,7 @@ mod tests {
             withdrawal_strategy: "conventional".to_string(),
             aca_benchmark_annual_premium: 0.0,
             medicare_part_b_annual_premium: 0.0,
+            avoid_early_withdrawal_penalty: false,
             tax_tables: TaxTables::default_2025(),
             aca_tables: crate::aca::AcaTables::default_2025(),
             irmaa_tables: IrmaaTables::default_2025(),
@@ -1790,6 +2039,93 @@ mod tests {
         assert!(y.withdrawals > 80_000.0);
         assert!((y.withdrawals - 80_000.0 - y.taxes).abs() < 5.0);
         assert!((y.tax.ordinary_income - y.withdrawals).abs() < 5.0);
+    }
+
+    #[test]
+    fn early_ira_withdrawal_before_fifty_nine_and_a_half_incurs_the_ten_percent_penalty() {
+        // Born 1970-06-01: 56 in the single projection year (2026), well
+        // short of the 59½ milestone (2029-12). All ordinary income comes
+        // from the IRA, so the penalty should be ~10% of that draw.
+        let p = profile(1970, 2026 - 1970);
+        let accts = [account("ira", "tax_deferred", 500_000.0, 0.0)];
+        let spend = [spending("living", "essential", 80_000.0, "annual", false)];
+        let out = run_projection(&base_inputs(&p, &accts, &[], &spend, &[]));
+        let y = &out.annual[0];
+        assert!(
+            y.tax.early_withdrawal_penalty > 0.0,
+            "expected a 10% early-withdrawal penalty on the pre-59½ IRA draw"
+        );
+        assert!(
+            (y.tax.early_withdrawal_penalty - 0.10 * y.tax.ordinary_income).abs() < 5.0,
+            "penalty {} should be ~10% of ordinary income {}",
+            y.tax.early_withdrawal_penalty,
+            y.tax.ordinary_income
+        );
+        // The penalty is included in the totals the rest of the app reads.
+        assert!(y.tax.total_tax >= y.tax.early_withdrawal_penalty);
+        assert!((y.tax.total_tax - y.taxes).abs() < 0.01);
+    }
+
+    #[test]
+    fn ira_withdrawal_after_fifty_nine_and_a_half_has_no_penalty() {
+        // Born 1966-06-01: 60 in the single projection year (2026), past the
+        // 59½ milestone (2025-12).
+        let p = profile(1966, 2026 - 1966);
+        let accts = [account("ira", "tax_deferred", 500_000.0, 0.0)];
+        let spend = [spending("living", "essential", 80_000.0, "annual", false)];
+        let out = run_projection(&base_inputs(&p, &accts, &[], &spend, &[]));
+        let y = &out.annual[0];
+        assert_eq!(y.tax.early_withdrawal_penalty, 0.0);
+    }
+
+    #[test]
+    fn avoid_early_withdrawal_penalty_blocks_ira_draws_and_shortfalls_instead() {
+        // Same pre-59½ setup as the penalty test above, but with the "Don't
+        // incur penalties" flag on: the IRA must not be touched at all, so
+        // spending goes entirely unfunded rather than drawing from it.
+        let p = profile(1970, 2026 - 1970);
+        let accts = [account("ira", "tax_deferred", 500_000.0, 0.0)];
+        let spend = [spending("living", "essential", 80_000.0, "annual", false)];
+        let inputs = ProjectionInputs {
+            avoid_early_withdrawal_penalty: true,
+            ..base_inputs(&p, &accts, &[], &spend, &[])
+        };
+        let out = run_projection(&inputs);
+        let y = &out.annual[0];
+        assert_eq!(y.withdrawals, 0.0, "the IRA must not be drawn from before 59½");
+        assert_eq!(y.tax.early_withdrawal_penalty, 0.0);
+        assert!(
+            (y.shortfall - 80_000.0).abs() < 1.0,
+            "unfunded spending should show up as a shortfall instead"
+        );
+    }
+
+    #[test]
+    fn avoid_early_withdrawal_penalty_still_draws_a_taxable_account_first() {
+        // A small taxable account plus a large pre-59½ IRA: with the flag on,
+        // the taxable account is drawn down as usual, but the IRA is left
+        // untouched even though it could otherwise cover the rest of spending.
+        let p = profile(1970, 2026 - 1970);
+        let accts = [
+            account("brokerage", "taxable", 20_000.0, 0.0),
+            account("ira", "tax_deferred", 500_000.0, 0.0),
+        ];
+        let spend = [spending("living", "essential", 80_000.0, "annual", false)];
+        let inputs = ProjectionInputs {
+            avoid_early_withdrawal_penalty: true,
+            ..base_inputs(&p, &accts, &[], &spend, &[])
+        };
+        let out = run_projection(&inputs);
+        let y = &out.annual[0];
+        assert!((y.withdrawals - 20_000.0).abs() < 1.0);
+        assert_eq!(y.tax.early_withdrawal_penalty, 0.0);
+        assert!(y.shortfall > 0.0, "the IRA must not fill the remaining gap");
+        let ira_balance = y
+            .account_balances
+            .iter()
+            .find(|a| a.account_id == "ira")
+            .unwrap();
+        assert_eq!(ira_balance.change, 0.0, "the IRA balance must be untouched");
     }
 
     #[test]
@@ -2107,6 +2443,133 @@ mod tests {
             account_withdrawal(&out_opt, "taxable_acct")
                 < account_withdrawal(&out_conv, "taxable_acct")
         );
+    }
+
+    // ---- Phase 2, feature 9b: maximize-income (bracket-fill) strategy -----
+
+    /// A large IRA relative to spending, with several low-income years before
+    /// RMDs begin (born 1958 -> RMD age 73 -> RMDs start 2031) and a long tail
+    /// afterward: with only modest spending drawn against a $3M balance, the
+    /// IRS divisor keeps shrinking every year long after the balance itself
+    /// has stopped shrinking much, so RMDs eventually dwarf the spending need
+    /// and land in a higher bracket than the modest pre-RMD withdrawals ever
+    /// would. A small taxable account gives the strategy somewhere to
+    /// reinvest voluntary withdrawals beyond need.
+    fn maximize_income_scenario() -> (Profile, [Account; 2], [SpendingItem; 1]) {
+        let p = profile(1958, 105); // ends 2063 (1958 + 105)
+        let accts = [
+            account("ira", "tax_deferred", 3_000_000.0, 0.0),
+            account("brokerage", "taxable", 10_000.0, 0.0),
+        ];
+        let spend = [spending("living", "essential", 10_000.0, "annual", false)];
+        (p, accts, spend)
+    }
+
+    #[test]
+    fn maximize_income_draws_more_from_the_ira_than_tax_optimized_in_a_pre_rmd_year() {
+        let (p, accts, spend) = maximize_income_scenario();
+
+        let mut optimized = base_inputs(&p, &accts, &[], &spend, &[]);
+        optimized.withdrawal_strategy = "tax_optimized".to_string();
+        let out_opt = run_projection(&optimized);
+
+        let mut maximized = base_inputs(&p, &accts, &[], &spend, &[]);
+        maximized.withdrawal_strategy = "maximize_income".to_string();
+        let out_max = run_projection(&maximized);
+
+        // 2026 is five years before RMDs begin (2031): tax-optimized only
+        // draws the IRA down enough to cover the 10k spending need (the
+        // taxable brokerage account alone already covers that), while
+        // maximize-income should voluntarily draw much more from the IRA to
+        // fill a low bracket now, shrinking the balance ahead of the eventual
+        // RMD.
+        let opt_year0 = &out_opt.annual[0];
+        let max_year0 = &out_max.annual[0];
+        assert_eq!(opt_year0.year, 2026);
+        assert_eq!(account_withdrawal(&out_opt, "ira"), 0.0);
+        assert!(account_withdrawal(&out_max, "ira") > 0.0);
+        assert!(max_year0.withdrawals > opt_year0.withdrawals);
+        assert!(max_year0.ending_balance < opt_year0.ending_balance);
+    }
+
+    #[test]
+    fn maximize_income_reduces_lifetime_rmds_and_taxes_versus_tax_optimized() {
+        let (p, accts, spend) = maximize_income_scenario();
+
+        let mut optimized = base_inputs(&p, &accts, &[], &spend, &[]);
+        optimized.withdrawal_strategy = "tax_optimized".to_string();
+        let out_opt = run_projection(&optimized);
+
+        let mut maximized = base_inputs(&p, &accts, &[], &spend, &[]);
+        maximized.withdrawal_strategy = "maximize_income".to_string();
+        let out_max = run_projection(&maximized);
+
+        // Shrinking the IRA before RMD age means smaller RMDs once they begin...
+        assert!(out_max.summary.total_lifetime_rmd < out_opt.summary.total_lifetime_rmd);
+        // ...which the search only keeps if it actually pays off in more total
+        // lifetime after-tax cash than not accelerating at all.
+        assert!(maximize_income_score(&out_max.summary) >= maximize_income_score(&out_opt.summary));
+    }
+
+    #[test]
+    fn maximize_income_is_a_no_op_with_only_a_tax_deferred_account() {
+        // With nowhere but the same tax-deferred account to reinvest a
+        // voluntary withdrawal's after-tax proceeds, drawing more than
+        // spending/RMDs require would only tax a dollar today for no benefit.
+        // The search must recognize there's no valid destination and behave
+        // identically to tax-optimized.
+        let p = profile(1958, 105);
+        let accts = [account("ira", "tax_deferred", 3_000_000.0, 0.0)];
+        let spend = [spending("living", "essential", 10_000.0, "annual", false)];
+
+        let mut optimized = base_inputs(&p, &accts, &[], &spend, &[]);
+        optimized.withdrawal_strategy = "tax_optimized".to_string();
+        let out_opt = run_projection(&optimized);
+
+        let mut maximized = base_inputs(&p, &accts, &[], &spend, &[]);
+        maximized.withdrawal_strategy = "maximize_income".to_string();
+        let out_max = run_projection(&maximized);
+
+        assert_eq!(out_max.summary.total_lifetime_taxes, out_opt.summary.total_lifetime_taxes);
+        assert_eq!(out_max.summary.total_lifetime_rmd, out_opt.summary.total_lifetime_rmd);
+        assert_eq!(out_max.annual[0].withdrawals, out_opt.annual[0].withdrawals);
+    }
+
+    #[test]
+    fn maximize_income_reinvests_bracket_fill_proceeds_into_tax_free_not_tax_deferred() {
+        // A Roth (tax-free), not a taxable account, is the only place other
+        // than the IRA itself to hold a voluntary withdrawal. Reinvesting into
+        // the IRA it came from would just tax the same dollar for nothing, so
+        // the engine must route it to the Roth instead.
+        let p = profile(1958, 105);
+        let accts = [
+            account("ira", "tax_deferred", 3_000_000.0, 0.0),
+            account("roth", "tax_free", 10_000.0, 0.0),
+        ];
+        let spend = [spending("living", "essential", 10_000.0, "annual", false)];
+
+        let mut maximized = base_inputs(&p, &accts, &[], &spend, &[]);
+        maximized.withdrawal_strategy = "maximize_income".to_string();
+        let out_max = run_projection(&maximized);
+
+        let mut optimized = base_inputs(&p, &accts, &[], &spend, &[]);
+        optimized.withdrawal_strategy = "tax_optimized".to_string();
+        let out_opt = run_projection(&optimized);
+
+        // The strategy found a genuinely better candidate than doing nothing...
+        assert!(maximize_income_score(&out_max.summary) > maximize_income_score(&out_opt.summary));
+        // ...and the extra money it pulled out of the IRA landed in the Roth,
+        // not back in the IRA.
+        assert!(account_withdrawal(&out_max, "ira") > account_withdrawal(&out_opt, "ira"));
+        let roth_end = |out: &ProjectionResponse| {
+            out.annual[0]
+                .account_balances
+                .iter()
+                .find(|a| a.account_name == "acct-roth")
+                .unwrap()
+                .ending_balance
+        };
+        assert!(roth_end(&out_max) > roth_end(&out_opt));
     }
 
     // ---- RMD module ----------------------------------------------------

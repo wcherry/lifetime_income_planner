@@ -3,6 +3,7 @@ import { useNavigate, useSearchParams } from "react-router-dom";
 import { api } from "../api/client";
 import type { DueQuarterlyReview, QuarterlyReview, QuarterlyReviewOverview } from "../api/types";
 import { Alert, Button, Card, Field, TextInput } from "../components/ui";
+import { useConfirmDialog } from "../components/ConfirmDialog";
 import { categoryLabel } from "../data/accounts";
 import { formatCurrency, formatSignedCurrency } from "../data/format";
 import {
@@ -28,6 +29,7 @@ export function QuarterlyReviewPage() {
   const [actualSpending, setActualSpending] = useState("");
   const [actualTax, setActualTax] = useState("");
   const [balances, setBalances] = useState<Record<string, string>>({});
+  const { confirm } = useConfirmDialog();
   const [notes, setNotes] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [expandedHistoryId, setExpandedHistoryId] = useState<string | null>(null);
@@ -92,10 +94,10 @@ export function QuarterlyReviewPage() {
     e.preventDefault();
     if (!selectedPeriod) return;
     if (
-      !window.confirm(
+      !(await confirm(
         `Complete the review for ${selectedPeriod.label}? This will overwrite your account balances ` +
           `with the ending balances entered below.`,
-      )
+      ))
     )
       return;
     setError(null);

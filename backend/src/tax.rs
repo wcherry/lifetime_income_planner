@@ -254,6 +254,26 @@ impl TaxTables {
         marginal_rate(self.capital_gains_brackets(fs), ordinary_taxable_income, factor)
     }
 
+    /// Top of the `bracket_index`-th ordinary bracket (0 = the lowest
+    /// bracket), i.e. the floor of the bracket immediately above it,
+    /// inflation-adjusted for `year`. `None` when `bracket_index` names the
+    /// top (unbounded) bracket or beyond. Used by the withdrawal engine's
+    /// maximize-income strategy (Phase 2, feature 9b) to size voluntary
+    /// tax-deferred withdrawals that deliberately "fill" a target bracket
+    /// before RMDs force the issue, possibly at a higher rate.
+    pub fn ordinary_bracket_top(
+        &self,
+        fs: FilingStatusKind,
+        year: i32,
+        inflation_rate: f64,
+        bracket_index: usize,
+    ) -> Option<f64> {
+        let factor = inflation_factor(self.base_year, year, inflation_rate);
+        self.ordinary_brackets(fs)
+            .get(bracket_index + 1)
+            .map(|b| b.floor * factor)
+    }
+
     /// Scalar parameters for a filing status (falls back to single, then zero).
     fn filing_params(&self, fs: FilingStatusKind) -> FilingParams {
         self.params
@@ -425,6 +445,11 @@ pub struct TaxInput<'a> {
     /// Gross Social Security benefits for the year.
     pub social_security_benefits: f64,
     pub state: &'a str,
+    /// IRS additional tax (IRC §72(t)) on tax-deferred withdrawals taken
+    /// before the account owner turns 59½. Folded into `federal_tax` and
+    /// `total_tax` as its own line, separate from the bracket-based
+    /// ordinary/capital-gains tax.
+    pub early_withdrawal_penalty: f64,
 }
 
 /// The full breakdown of a year's computed tax.
@@ -436,6 +461,9 @@ pub struct TaxResult {
     pub taxable_income: f64,
     pub federal_ordinary_tax: f64,
     pub federal_capital_gains_tax: f64,
+    /// IRS additional tax (IRC §72(t)) on early tax-deferred withdrawals;
+    /// already included in `federal_tax` and `total_tax`.
+    pub early_withdrawal_penalty: f64,
     pub federal_tax: f64,
     /// State taxable income (state's own base and standard deduction).
     pub state_taxable_income: f64,
@@ -490,7 +518,7 @@ pub fn compute_taxes(inp: &TaxInput, tables: &TaxTables) -> TaxResult {
         ordinary_taxable,
         ordinary_taxable + preferential_taxable,
     );
-    let federal_tax = federal_ordinary + federal_pref;
+    let federal_tax = federal_ordinary + federal_pref + inp.early_withdrawal_penalty;
 
     // State tax is computed on the state's own base and brackets — gains and
     // dividends are taxed as ordinary income there, and Social Security is
@@ -520,6 +548,7 @@ pub fn compute_taxes(inp: &TaxInput, tables: &TaxTables) -> TaxResult {
         taxable_income,
         federal_ordinary_tax: federal_ordinary,
         federal_capital_gains_tax: federal_pref,
+        early_withdrawal_penalty: inp.early_withdrawal_penalty,
         federal_tax,
         state_taxable_income: state.taxable_income,
         state_standard_deduction: state.standard_deduction,
@@ -862,6 +891,7 @@ mod tests {
             long_term_capital_gains: 0.0,
             social_security_benefits: 0.0,
             state: "TX",
+            early_withdrawal_penalty: 0.0,
         }
     }
 
@@ -1074,6 +1104,25 @@ mod tests {
         assert_eq!(
             t.capital_gains_marginal_rate(FilingStatusKind::Single, 2025, 0.0, 600_000.0),
             0.20
+        );
+    }
+
+    #[test]
+    fn ordinary_bracket_top_returns_the_next_bracket_floor() {
+        let t = tables();
+        // Single, 2025: 10% up to 11,925, 12% up to 48,475, ..., 37% above 626,350.
+        assert_eq!(
+            t.ordinary_bracket_top(FilingStatusKind::Single, 2025, 0.0, 0),
+            Some(11_925.0)
+        );
+        assert_eq!(
+            t.ordinary_bracket_top(FilingStatusKind::Single, 2025, 0.0, 1),
+            Some(48_475.0)
+        );
+        // The top (7th, index 6) bracket has no bracket above it to bound it.
+        assert_eq!(
+            t.ordinary_bracket_top(FilingStatusKind::Single, 2025, 0.0, 6),
+            None
         );
     }
 }

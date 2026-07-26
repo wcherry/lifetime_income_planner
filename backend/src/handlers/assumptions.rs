@@ -86,6 +86,7 @@ pub async fn upsert_assumptions(
         withdrawal_strategy: payload.withdrawal_strategy.as_str().to_string(),
         aca_benchmark_annual_premium: payload.aca_benchmark_annual_premium,
         medicare_part_b_annual_premium: payload.medicare_part_b_annual_premium,
+        avoid_early_withdrawal_penalty: payload.avoid_early_withdrawal_penalty,
     };
 
     let pool = pool.clone();
@@ -119,6 +120,8 @@ pub async fn upsert_assumptions(
                             .eq(new_row.aca_benchmark_annual_premium),
                         assumptions::medicare_part_b_annual_premium
                             .eq(new_row.medicare_part_b_annual_premium),
+                        assumptions::avoid_early_withdrawal_penalty
+                            .eq(new_row.avoid_early_withdrawal_penalty),
                     ))
                     .execute(&mut conn)?;
             }

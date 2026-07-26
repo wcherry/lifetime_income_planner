@@ -32,6 +32,7 @@ const baseSummary: ProjectionSummary = {
   total_lifetime_medicare_premiums: 0,
   total_lifetime_irmaa_surcharges: 0,
   total_lifetime_rmd: 0,
+  total_lifetime_social_security: 0,
   depletion_year: null,
 };
 
@@ -69,6 +70,7 @@ const emptyTax: YearTax = {
   taxable_income: 0,
   federal_ordinary_tax: 0,
   federal_capital_gains_tax: 0,
+  early_withdrawal_penalty: 0,
   federal_tax: 0,
   state_taxable_income: 0,
   state_standard_deduction: 0,
@@ -131,6 +133,7 @@ function projectionWith(
       withdrawal_strategy: "conventional",
       aca_benchmark_annual_premium: 0,
       medicare_part_b_annual_premium: 0,
+      avoid_early_withdrawal_penalty: false,
       is_default: true,
     },
     summary,

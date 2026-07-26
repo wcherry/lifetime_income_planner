@@ -2,6 +2,7 @@ import { useEffect, useState, type FormEvent } from "react";
 import { api } from "../api/client";
 import type { Profile, SocialSecurityEstimate, SsEstimateOwner } from "../api/types";
 import { Alert, Button, Card, Field, Select, TextInput } from "../components/ui";
+import { useConfirmDialog } from "../components/ConfirmDialog";
 import { formatCurrency } from "../data/format";
 
 const CLAIMING_AGES = [62, 67, 70] as const;
@@ -24,6 +25,7 @@ export function SocialSecurityPage() {
   const [error, setError] = useState<string | null>(null);
   const [status, setStatus] = useState<string | null>(null);
   const [importing, setImporting] = useState(false);
+  const { confirm } = useConfirmDialog();
 
   const [owner, setOwner] = useState<SsEstimateOwner>("self");
   const [statementDate, setStatementDate] = useState("");
@@ -74,7 +76,7 @@ export function SocialSecurityPage() {
   }
 
   async function handleDelete(estimate: SocialSecurityEstimate) {
-    if (!window.confirm(`Delete this ${ownerLabel(estimate.owner)} estimate?`)) return;
+    if (!(await confirm(`Delete this ${ownerLabel(estimate.owner)} estimate?`))) return;
     setError(null);
     try {
       await api.deleteSocialSecurityEstimate(estimate.id);
