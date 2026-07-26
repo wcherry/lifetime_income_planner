@@ -698,117 +698,117 @@ Audit trail
 
 Development Roadmap
 
-Phase 1 – Financial Foundation (MVP)
+✅ Phase 1 – Financial Foundation (MVP)
 
 Goal: Deliver a usable retirement planner that generates quarterly withdrawal instructions based on user-defined assumptions.
 
 Features
 
-1. User accounts and authentication
-2. Retirement profile setup
-3. Account management (manual balances and expected returns)
-4. Spending assumptions
-5. Income sources (Social Security, pensions, employment)
-6. Life events (basic engine)
-7. Inflation and ROI assumptions
-8. Projection engine
-9. Quarterly withdrawal schedule
-10.  Net worth projection charts
-11.  Save/load retirement plans
+1. ✅ User accounts and authentication
+2. ✅ Retirement profile setup
+3. ✅ Account management (manual balances and expected returns)
+4. ✅ Spending assumptions
+5. ✅ Income sources (Social Security, pensions, employment)
+6. ✅ Life events (basic engine)
+7. ✅ Inflation and ROI assumptions
+8. ✅ Projection engine
+9. ✅ Quarterly withdrawal schedule
+10. ✅ Net worth projection charts
+11. ✅ Save/load retirement plans
 
 Deliverable: A complete retirement plan with a recommended withdrawal schedule.
 
 ⸻
 
-Phase 2 – Tax Optimization
+⬜ Phase 2 – Tax Optimization
 
 Goal: Produce tax-aware withdrawal recommendations.
 
 Milestones
 
-1. Federal tax calculations
-2. State tax calculations
-3. Capital gains handling
-4. Qualified dividends
-5. Social Security taxation
-6. Roth conversion modeling
-7. Estimated quarterly taxes
-8. Tax reporting
-9. Withdrawal sequencing optimization
+1. ✅ Federal tax calculations
+2. ✅ State tax calculations
+3. ✅ Capital gains handling
+4. ✅ Qualified dividends
+5. ✅ Social Security taxation
+6. ✅ Roth conversion modeling
+7. ✅ Estimated quarterly taxes
+8. ⬜ Tax reporting
+9. ✅ Withdrawal sequencing optimization
 
 Deliverable: After-tax optimized quarterly withdrawal plan.
 
 ⸻
 
-Phase 3 – Healthcare & Regulatory Intelligence
+⬜ Phase 3 – Healthcare & Regulatory Intelligence
 
 Goal: Optimize around healthcare costs and regulatory requirements.
 
 Milestones
 
-1. ACA subsidy calculations
-2. MAGI tracking and forecasting
-3. Medicare enrollment events
-4. IRMAA forecasting
-5. Required Minimum Distribution (RMD) calculations
-6. Roth conversion timing around IRMAA and RMDs
-7. Regulatory alerts and reminders
+1. ✅ ACA subsidy calculations
+2. ✅ MAGI tracking and forecasting
+3. ⬜ Medicare enrollment events
+4. ✅ IRMAA forecasting
+5. ✅ Required Minimum Distribution (RMD) calculations
+6. ⬜ Roth conversion timing around IRMAA and RMDs
+7. ⬜ Regulatory alerts and reminders
 
 Deliverable: Plans that balance spending with healthcare costs and compliance.
 
 ⸻
 
-Phase 4 – Scenario Planning & Optimization
+⬜ Phase 4 – Scenario Planning & Optimization
 
 Goal: Enable users to compare retirement strategies and stress-test assumptions.
 
 Milestones
 
-1. Unlimited baseline and test scenarios
-2. Side-by-side scenario comparison
-3. Interactive “what-if” controls
-4. Scenario cloning and branching
-5. Optimization goals (e.g., minimize taxes, maximize estate)
-6. Monte Carlo simulation
-7. Historical scenario snapshots
+1. ✅ Unlimited baseline and test scenarios
+2. ✅ Side-by-side scenario comparison
+3. ✅ Interactive “what-if” controls
+4. ✅ Scenario cloning and branching
+5. ⬜ Optimization goals (e.g., minimize taxes, maximize estate)
+6. ✅ Monte Carlo simulation
+7. ✅ Historical scenario snapshots
 
 Deliverable: A powerful planning workspace where users can evaluate competing strategies with clear comparisons.
 
 ⸻
 
-Phase 5 – Execution & Ongoing Management
+⬜ Phase 5 – Execution & Ongoing Management
 
 Goal: Transition from planning to active retirement management.
 
 Milestones
 
-1. Quarterly review workflow
-2. Actual vs. planned tracking
-3. Automatic plan recalculation
-4. Cash flow reconciliation
-5. Task lists and reminders
-6. Report generation
-7. Export to PDF/CSV
-8. Annual planning wizard
+1. ✅ Quarterly review workflow
+2. ✅ Actual vs. planned tracking
+3. ⬜ Automatic plan recalculation
+4. ✅ Cash flow reconciliation
+5. ⬜ Task lists and reminders
+6. ⬜ Report generation
+7. ⬜ Export to PDF/CSV
+8. ⬜ Annual planning wizard
 
 Deliverable: A living retirement plan that evolves as the user’s financial situation changes.
 
 ⸻
 
-Phase 6 – Intelligent Automation & Integrations
+⬜ Phase 6 – Intelligent Automation & Integrations
 
 Goal: Reduce manual effort and provide personalized guidance.
 
 Milestones
 
-1. Financial account aggregation (e.g., Plaid or direct institution integrations)
-2. Automatic balance and transaction updates
-3. Tax form imports
-4. Social Security statement import
-5. AI-powered explanations of recommendations
-6. Personalized insights and anomaly detection
-7. Collaboration features for spouses and financial advisors
-8. Mobile companion app
+1. ✅ Financial account aggregation (e.g., Plaid or direct institution integrations)
+2. ✅ Automatic balance and transaction updates
+3. ✅ Tax form imports
+4. ✅ Social Security statement import
+5. ⬜ AI-powered explanations of recommendations
+6. ✅ Personalized insights and anomaly detection
+7. ✅ Collaboration features for spouses and financial advisors
+8. ⬜ Mobile companion app
 
 Deliverable: A highly automated retirement platform that continuously monitors, explains, and adapts the user’s retirement strategy.
 
@@ -818,15 +818,15 @@ Future Expansion Opportunities
 
 Once the core planner is mature, the platform could evolve into a comprehensive retirement management suite by adding:
 
-1. Dynamic spending strategies (e.g., guardrails, Guyton-Klinger, variable percentage withdrawals)
-2. Long-term care and assisted living planning
-3. Estate planning and beneficiary modeling
-4. Charitable giving and donor-advised fund optimization
-5. Legacy and inheritance projections
-6. Tax law versioning to model proposed legislation
-7. International retirement support
-8. Advisor edition with multi-client management
-9. Household collaboration and shared planning
-10. Open APIs for integration with financial institutions and tax preparation software
+1. ⬜ Dynamic spending strategies (e.g., guardrails, Guyton-Klinger, variable percentage withdrawals)
+2. ⬜ Long-term care and assisted living planning
+3. ⬜ Estate planning and beneficiary modeling
+4. ⬜ Charitable giving and donor-advised fund optimization
+5. ⬜ Legacy and inheritance projections
+6. ⬜ Tax law versioning to model proposed legislation
+7. ⬜ International retirement support
+8. ⬜ Advisor edition with multi-client management
+9. ⬜ Household collaboration and shared planning
+10. ⬜ Open APIs for integration with financial institutions and tax preparation software
 
 This roadmap creates a progression from a focused, high-value MVP to a sophisticated retirement decision platform. By emphasizing actionable quarterly withdrawal plans, continuous re-optimization, and scenario comparison, the application fills a gap left by traditional retirement calculators that stop at forecasting rather than guiding ongoing execution.
