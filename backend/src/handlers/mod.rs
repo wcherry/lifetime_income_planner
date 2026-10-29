@@ -1,4 +1,5 @@
 pub mod account;
+pub mod annual_wizard;
 pub mod assumptions;
 pub mod auth;
 pub mod collaborator;
@@ -16,4 +17,5 @@ pub mod reports;
 pub mod social_security_estimate;
 pub mod spending;
 pub mod spending_tracker;
+pub mod tasks;
 pub mod tax_document;

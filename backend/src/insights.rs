@@ -6,12 +6,12 @@
 //! database.
 
 use chrono::{Datelike, NaiveDate};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
 use crate::models::{Account, YearProjection};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, ToSchema)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, ToSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum InsightSeverity {
     Low,
@@ -19,7 +19,7 @@ pub enum InsightSeverity {
     High,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, ToSchema)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum InsightCategory {
     AcaSubsidy,
@@ -30,6 +30,7 @@ pub enum InsightCategory {
     QuarterlyReviewDue,
     AggressivePortfolio,
     SequenceOfReturnRisk,
+    RegulatoryMilestone,
 }
 
 #[derive(Debug, Clone, Serialize, ToSchema)]
@@ -56,6 +57,9 @@ pub struct InsightContext<'a> {
     /// This year's row from the projection engine's `annual` output, if a
     /// projection could be built (requires a saved profile).
     pub current_year_projection: Option<&'a YearProjection>,
+    /// Next year's row, used to surface regulatory milestones (e.g. a
+    /// Medicare enrollment window) a quarter or two before they land.
+    pub next_year_projection: Option<&'a YearProjection>,
     pub accounts: &'a [Account],
     /// True when the current quarter has no completed review yet.
     pub review_due: bool,
@@ -87,6 +91,7 @@ pub fn generate_insights(ctx: &InsightContext) -> Vec<Insight> {
         irmaa_insight(yp, &mut insights);
         rmd_insight(yp, &mut insights);
     }
+    regulatory_milestone_insights(ctx.current_year_projection, ctx.next_year_projection, &mut insights);
 
     if let Some(review) = &ctx.latest_review {
         if review.net_cash_flow < 0.0 {
@@ -207,6 +212,39 @@ fn rmd_insight(yp: &YearProjection, insights: &mut Vec<Insight>) {
     }
 }
 
+/// Regulatory alerts and reminders (Phase 3, feature 7): surfaces the
+/// milestones the projection engine already flags as having a real
+/// compliance deadline (`Milestone::is_regulatory`) — a Medicare enrollment
+/// window, RMDs beginning — rather than requiring the user to notice them on
+/// the net-worth chart. A milestone landing this year is Medium severity; one
+/// landing next year is a heads-up, Low severity.
+fn regulatory_milestone_insights(
+    current: Option<&YearProjection>,
+    next: Option<&YearProjection>,
+    insights: &mut Vec<Insight>,
+) {
+    if let Some(yp) = current {
+        for m in yp.milestones.iter().filter(|m| m.is_regulatory) {
+            insights.push(Insight {
+                category: InsightCategory::RegulatoryMilestone,
+                severity: InsightSeverity::Medium,
+                title: m.label.clone(),
+                message: format!("{} This applies this year.", m.detail),
+            });
+        }
+    }
+    if let Some(yp) = next {
+        for m in yp.milestones.iter().filter(|m| m.is_regulatory) {
+            insights.push(Insight {
+                category: InsightCategory::RegulatoryMilestone,
+                severity: InsightSeverity::Low,
+                title: format!("{} next year", m.label),
+                message: m.detail.clone(),
+            });
+        }
+    }
+}
+
 fn aggressive_portfolio_insight(primary_age: i32, accounts: &[Account]) -> Option<Insight> {
     let (weighted_stock, total_balance) = accounts
         .iter()
@@ -236,7 +274,7 @@ fn aggressive_portfolio_insight(primary_age: i32, accounts: &[Account]) -> Optio
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::models::{YearAca, YearIrmaa, YearTax};
+    use crate::models::{Milestone, YearAca, YearIrmaa, YearTax};
     use chrono::NaiveDateTime;
 
     fn sample_account(stock_pct: Option<i32>, balance: f64) -> Account {
@@ -321,6 +359,7 @@ mod tests {
             primary_age: 75,
             retirement_date: "2020-01-01".parse().unwrap(),
             current_year_projection: Some(&yp),
+            next_year_projection: None,
             accounts: &[],
             review_due: false,
             latest_review: None,
@@ -330,6 +369,88 @@ mod tests {
         assert!(insights.iter().any(|i| i.category == InsightCategory::Rmd));
     }
 
+    fn year_with_milestones(milestones: Vec<Milestone>) -> YearProjection {
+        YearProjection {
+            milestones,
+            ..sample_year(0.0, YearAca::default(), YearIrmaa::default())
+        }
+    }
+
+    fn milestone(label: &str, is_regulatory: bool) -> Milestone {
+        Milestone {
+            label: label.to_string(),
+            detail: format!("{label} detail."),
+            age: 65,
+            is_regulatory,
+        }
+    }
+
+    #[test]
+    fn a_current_year_regulatory_milestone_is_a_medium_severity_alert() {
+        let yp = year_with_milestones(vec![milestone("Medicare enrollment window opens", true)]);
+        let ctx = InsightContext {
+            current_year: 2026,
+            primary_age: 64,
+            retirement_date: "2020-01-01".parse().unwrap(),
+            current_year_projection: Some(&yp),
+            next_year_projection: None,
+            accounts: &[],
+            review_due: false,
+            latest_review: None,
+            monte_carlo_success_rate: None,
+        };
+        let insights = generate_insights(&ctx);
+        let found = insights
+            .iter()
+            .find(|i| i.category == InsightCategory::RegulatoryMilestone)
+            .expect("expected a regulatory milestone insight");
+        assert_eq!(found.severity, InsightSeverity::Medium);
+        assert_eq!(found.title, "Medicare enrollment window opens");
+    }
+
+    #[test]
+    fn a_next_year_regulatory_milestone_is_a_low_severity_heads_up() {
+        let next = year_with_milestones(vec![milestone("RMDs begin", true)]);
+        let ctx = InsightContext {
+            current_year: 2026,
+            primary_age: 74,
+            retirement_date: "2020-01-01".parse().unwrap(),
+            current_year_projection: None,
+            next_year_projection: Some(&next),
+            accounts: &[],
+            review_due: false,
+            latest_review: None,
+            monte_carlo_success_rate: None,
+        };
+        let insights = generate_insights(&ctx);
+        let found = insights
+            .iter()
+            .find(|i| i.category == InsightCategory::RegulatoryMilestone)
+            .expect("expected a regulatory milestone insight");
+        assert_eq!(found.severity, InsightSeverity::Low);
+        assert_eq!(found.title, "RMDs begin next year");
+    }
+
+    #[test]
+    fn non_regulatory_milestones_produce_no_alert() {
+        let yp = year_with_milestones(vec![milestone("Social Security eligibility", false)]);
+        let ctx = InsightContext {
+            current_year: 2026,
+            primary_age: 62,
+            retirement_date: "2020-01-01".parse().unwrap(),
+            current_year_projection: Some(&yp),
+            next_year_projection: None,
+            accounts: &[],
+            review_due: false,
+            latest_review: None,
+            monte_carlo_success_rate: None,
+        };
+        let insights = generate_insights(&ctx);
+        assert!(!insights
+            .iter()
+            .any(|i| i.category == InsightCategory::RegulatoryMilestone));
+    }
+
     #[test]
     fn flags_negative_cash_flow_as_high_severity() {
         let ctx = InsightContext {
@@ -337,6 +458,7 @@ mod tests {
             primary_age: 65,
             retirement_date: "2020-01-01".parse().unwrap(),
             current_year_projection: None,
+            next_year_projection: None,
             accounts: &[],
             review_due: false,
             latest_review: Some(ReviewVariance {
@@ -362,6 +484,7 @@ mod tests {
             primary_age: 65,
             retirement_date: "2020-01-01".parse().unwrap(),
             current_year_projection: None,
+            next_year_projection: None,
             accounts: &[],
             review_due: false,
             latest_review: Some(ReviewVariance {
@@ -398,6 +521,7 @@ mod tests {
             primary_age: 70, // recommended max ~40%
             retirement_date: "2020-01-01".parse().unwrap(),
             current_year_projection: None,
+            next_year_projection: None,
             accounts: &accounts,
             review_due: false,
             latest_review: None,
@@ -416,6 +540,7 @@ mod tests {
             primary_age: 70,
             retirement_date: "2020-01-01".parse().unwrap(),
             current_year_projection: None,
+            next_year_projection: None,
             accounts: &accounts,
             review_due: false,
             latest_review: None,
@@ -433,6 +558,7 @@ mod tests {
             primary_age: 65,
             retirement_date: "2025-01-01".parse().unwrap(),
             current_year_projection: None,
+            next_year_projection: None,
             accounts: &[],
             review_due: false,
             latest_review: None,
@@ -458,6 +584,7 @@ mod tests {
             primary_age: 65,
             retirement_date: "2025-01-01".parse().unwrap(),
             current_year_projection: None,
+            next_year_projection: None,
             accounts: &[],
             review_due: true, // Low
             latest_review: Some(ReviewVariance {

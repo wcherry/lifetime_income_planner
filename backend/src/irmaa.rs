@@ -145,6 +145,26 @@ impl IrmaaTables {
             IrmaaFilingGroup::MarriedFilingSeparately => &self.married_filing_separately,
         }
     }
+
+    /// The smallest bracket threshold for `group`, indexed to `as_of_year`,
+    /// that is strictly greater than `magi` (roadmap Phase 3, feature 6): the
+    /// MAGI a household would need to stay under to avoid tripping into the
+    /// next-highest IRMAA tier. `None` when `magi` is already at or above the
+    /// top bracket — there's no further tier left to avoid, so more income
+    /// carries no additional IRMAA cost.
+    pub fn next_threshold(
+        &self,
+        group: IrmaaFilingGroup,
+        as_of_year: i32,
+        inflation_rate: f64,
+        magi: f64,
+    ) -> Option<f64> {
+        let factor = inflation_factor(self.base_year, as_of_year, inflation_rate);
+        self.brackets_for(group)
+            .iter()
+            .map(|b| b.threshold * factor)
+            .find(|&threshold| threshold > magi)
+    }
 }
 
 /// Inflation index factor applied to the bracket thresholds for a projection
@@ -375,6 +395,31 @@ mod tests {
         let later = compute_irmaa(&i, &tables());
         assert!(now.applies);
         assert!(!later.applies);
+    }
+
+    #[test]
+    fn next_threshold_returns_first_tier_above_magi() {
+        let t = tables().next_threshold(IrmaaFilingGroup::Single, 2025, 0.0, 90_000.0);
+        assert_eq!(t, Some(106_000.0));
+    }
+
+    #[test]
+    fn next_threshold_is_none_at_or_above_the_top_bracket() {
+        let at_top = tables().next_threshold(IrmaaFilingGroup::Single, 2025, 0.0, 500_000.0);
+        let above_top =
+            tables().next_threshold(IrmaaFilingGroup::Single, 2025, 0.0, 10_000_000.0);
+        assert_eq!(at_top, None);
+        assert_eq!(above_top, None);
+    }
+
+    #[test]
+    fn next_threshold_is_inflation_indexed_for_a_future_year() {
+        // Twenty years out at 3% inflation, the first tier's threshold has
+        // grown well past its base-year nominal value.
+        let base = tables().next_threshold(IrmaaFilingGroup::Single, 2025, 0.0, 90_000.0);
+        let future = tables().next_threshold(IrmaaFilingGroup::Single, 2045, 3.0, 90_000.0);
+        assert_eq!(base, Some(106_000.0));
+        assert!(future.unwrap() > 106_000.0);
     }
 
     #[test]

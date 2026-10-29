@@ -14,6 +14,13 @@ pub struct Config {
     pub plaid_client_id: Option<String>,
     pub plaid_secret: Option<String>,
     pub plaid_env: String,
+    /// AI-powered explanations of recommendations (Phase 6, feature 5):
+    /// which provider generates the plain-English explanation. `"claude"`
+    /// calls the Anthropic API (requires `anthropic_api_key`); anything else
+    /// (including unset) falls back to the deterministic template provider.
+    pub ai_explanation_provider: String,
+    pub anthropic_api_key: Option<String>,
+    pub anthropic_model: String,
 }
 
 impl Config {
@@ -35,6 +42,11 @@ impl Config {
             plaid_client_id: env::var("PLAID_CLIENT_ID").ok().filter(|s| !s.is_empty()),
             plaid_secret: env::var("PLAID_SECRET").ok().filter(|s| !s.is_empty()),
             plaid_env: env::var("PLAID_ENV").unwrap_or_else(|_| "sandbox".to_string()),
+            ai_explanation_provider: env::var("AI_EXPLANATION_PROVIDER")
+                .unwrap_or_else(|_| "template".to_string()),
+            anthropic_api_key: env::var("ANTHROPIC_API_KEY").ok().filter(|s| !s.is_empty()),
+            anthropic_model: env::var("ANTHROPIC_MODEL")
+                .unwrap_or_else(|_| "claude-opus-5".to_string()),
         }
     }
 }

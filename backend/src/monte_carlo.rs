@@ -175,6 +175,8 @@ mod tests {
             aca_benchmark_annual_premium: 0.0,
             medicare_part_b_annual_premium: 0.0,
             avoid_early_withdrawal_penalty: false,
+            medicare_enrollment_age: 65,
+            roth_conversion_mode: "fixed_ceiling".to_string(),
             tax_tables: TaxTables::default_2025(),
             aca_tables: AcaTables::default_2025(),
             irmaa_tables: IrmaaTables::default_2025(),

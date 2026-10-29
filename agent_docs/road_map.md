@@ -720,7 +720,7 @@ Deliverable: A complete retirement plan with a recommended withdrawal schedule.
 
 ⸻
 
-⬜ Phase 2 – Tax Optimization
+✅ Phase 2 – Tax Optimization
 
 Goal: Produce tax-aware withdrawal recommendations.
 
@@ -733,14 +733,14 @@ Milestones
 5. ✅ Social Security taxation
 6. ✅ Roth conversion modeling
 7. ✅ Estimated quarterly taxes
-8. ⬜ Tax reporting
+8. ✅ Tax reporting
 9. ✅ Withdrawal sequencing optimization
 
 Deliverable: After-tax optimized quarterly withdrawal plan.
 
 ⸻
 
-⬜ Phase 3 – Healthcare & Regulatory Intelligence
+✅ Phase 3 – Healthcare & Regulatory Intelligence
 
 Goal: Optimize around healthcare costs and regulatory requirements.
 
@@ -748,17 +748,17 @@ Milestones
 
 1. ✅ ACA subsidy calculations
 2. ✅ MAGI tracking and forecasting
-3. ⬜ Medicare enrollment events
+3. ✅ Medicare enrollment events
 4. ✅ IRMAA forecasting
 5. ✅ Required Minimum Distribution (RMD) calculations
-6. ⬜ Roth conversion timing around IRMAA and RMDs
-7. ⬜ Regulatory alerts and reminders
+6. ✅ Roth conversion timing around IRMAA and RMDs
+7. ✅ Regulatory alerts and reminders
 
 Deliverable: Plans that balance spending with healthcare costs and compliance.
 
 ⸻
 
-⬜ Phase 4 – Scenario Planning & Optimization
+✅ Phase 4 – Scenario Planning & Optimization
 
 Goal: Enable users to compare retirement strategies and stress-test assumptions.
 
@@ -768,7 +768,7 @@ Milestones
 2. ✅ Side-by-side scenario comparison
 3. ✅ Interactive “what-if” controls
 4. ✅ Scenario cloning and branching
-5. ⬜ Optimization goals (e.g., minimize taxes, maximize estate)
+5. ✅ Optimization goals (e.g., minimize taxes, maximize estate)
 6. ✅ Monte Carlo simulation
 7. ✅ Historical scenario snapshots
 
@@ -776,7 +776,7 @@ Deliverable: A powerful planning workspace where users can evaluate competing st
 
 ⸻
 
-⬜ Phase 5 – Execution & Ongoing Management
+✅ Phase 5 – Execution & Ongoing Management
 
 Goal: Transition from planning to active retirement management.
 
@@ -784,12 +784,12 @@ Milestones
 
 1. ✅ Quarterly review workflow
 2. ✅ Actual vs. planned tracking
-3. ⬜ Automatic plan recalculation
+3. ✅ Automatic plan recalculation
 4. ✅ Cash flow reconciliation
-5. ⬜ Task lists and reminders
-6. ⬜ Report generation
-7. ⬜ Export to PDF/CSV
-8. ⬜ Annual planning wizard
+5. ✅ Task lists and reminders
+6. ✅ Report generation
+7. ✅ Export to PDF/CSV
+8. ✅ Annual planning wizard
 
 Deliverable: A living retirement plan that evolves as the user’s financial situation changes.
 

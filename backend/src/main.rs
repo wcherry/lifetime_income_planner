@@ -1,8 +1,11 @@
 mod aca;
+mod ai_explanation;
 mod auth;
 mod config;
 mod db;
 mod error;
+#[cfg(test)]
+mod fixture_export;
 mod handlers;
 mod insights;
 mod irmaa;
@@ -13,6 +16,7 @@ mod plaid_client;
 mod projection;
 mod reconciliation;
 mod schema;
+mod tasks;
 mod tax;
 
 use actix_cors::Cors;
@@ -87,6 +91,10 @@ async fn main() -> std::io::Result<()> {
                     .service(handlers::quarterly_review::list_quarterly_reviews)
                     .service(handlers::quarterly_review::complete_quarterly_review)
                     .service(handlers::reports::get_tax_summary_csv)
+                    .service(handlers::reports::get_annual_plan_csv)
+                    .service(handlers::reports::get_annual_plan_pdf)
+                    .service(handlers::reports::get_quarterly_schedule_csv)
+                    .service(handlers::reports::get_asset_allocation_csv)
                     .service(handlers::plaid::sandbox_connect)
                     .service(handlers::plaid::list_items)
                     .service(handlers::plaid::sync_item)
@@ -111,6 +119,12 @@ async fn main() -> std::io::Result<()> {
                     .service(handlers::social_security_estimate::list_estimates)
                     .service(handlers::social_security_estimate::delete_estimate)
                     .service(handlers::insights::list_insights)
+                    .service(handlers::insights::explain_insight)
+                    .service(handlers::tasks::list_tasks)
+                    .service(handlers::tasks::complete_task)
+                    .service(handlers::tasks::uncomplete_task)
+                    .service(handlers::annual_wizard::get_annual_wizard)
+                    .service(handlers::annual_wizard::complete_annual_wizard)
                     .service(handlers::collaborator::invite_collaborator)
                     .service(handlers::collaborator::list_collaborators)
                     .service(handlers::collaborator::list_invitations)

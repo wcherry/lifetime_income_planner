@@ -1,9 +1,11 @@
 use utoipa::openapi::security::{Http, HttpAuthScheme, SecurityScheme};
 use utoipa::{Modify, OpenApi};
 
+use crate::ai_explanation;
 use crate::handlers;
 use crate::insights;
 use crate::models;
+use crate::tasks;
 
 #[derive(OpenApi)]
 #[openapi(
@@ -45,6 +47,10 @@ use crate::models;
         handlers::quarterly_review::list_quarterly_reviews,
         handlers::quarterly_review::complete_quarterly_review,
         handlers::reports::get_tax_summary_csv,
+        handlers::reports::get_annual_plan_csv,
+        handlers::reports::get_annual_plan_pdf,
+        handlers::reports::get_quarterly_schedule_csv,
+        handlers::reports::get_asset_allocation_csv,
         handlers::plaid::sandbox_connect,
         handlers::plaid::list_items,
         handlers::plaid::sync_item,
@@ -69,6 +75,12 @@ use crate::models;
         handlers::social_security_estimate::list_estimates,
         handlers::social_security_estimate::delete_estimate,
         handlers::insights::list_insights,
+        handlers::insights::explain_insight,
+        handlers::tasks::list_tasks,
+        handlers::tasks::complete_task,
+        handlers::tasks::uncomplete_task,
+        handlers::annual_wizard::get_annual_wizard,
+        handlers::annual_wizard::complete_annual_wizard,
         handlers::collaborator::invite_collaborator,
         handlers::collaborator::list_collaborators,
         handlers::collaborator::list_invitations,
@@ -187,6 +199,12 @@ use crate::models;
         insights::InsightCategory,
         insights::InsightSeverity,
         insights::Insight,
+        ai_explanation::ExplainInsightRequest,
+        ai_explanation::ExplainInsightResponse,
+        tasks::TaskCategory,
+        tasks::Task,
+        models::AnnualWizardStep,
+        models::AnnualWizardResponse,
         models::InviteCollaboratorRequest,
         models::CollaboratorRole,
         models::CollaboratorResponse,
@@ -211,7 +229,7 @@ use crate::models;
         (name = "tax_documents", description = "Tax form imports (roadmap Phase 6): parsed 1099/W2/SSA-1099 box amounts compared against the tax projection"),
         (name = "spending_tracker", description = "Spending Tracker (roadmap Phase 6): transaction-level CSV import and categorization, distinct from the planned-budget \"spending\" assumptions used by the projection engine"),
         (name = "social_security", description = "Social Security statement import (roadmap Phase 6): claiming-age benefit estimates"),
-        (name = "insights", description = "Personalized insights & anomaly detection (roadmap Phase 6): ACA/IRMAA/RMD reminders, cash-flow and spending anomalies, and sequence-of-return risk"),
+        (name = "insights", description = "Personalized insights & anomaly detection (roadmap Phase 6): ACA/IRMAA/RMD reminders, cash-flow and spending anomalies, sequence-of-return risk, and AI-powered plain-English explanations of each"),
         (name = "collaboration", description = "Collaboration (roadmap Phase 6): grant spouses full access and advisors read-only access to your plan"),
         (name = "health", description = "Service health"),
     )

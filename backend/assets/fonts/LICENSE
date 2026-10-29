@@ -1,0 +1,13 @@
+DejaVu Sans font family (Regular, Bold, Italic, BoldItalic)
+
+Vendored here for embedding in generated PDF reports (roadmap Phase 5,
+feature 7). DejaVu fonts are derived from the Bitstream Vera fonts and are
+released under a permissive license explicitly allowing redistribution,
+modification, and embedding in documents/software, provided copyright
+notices are retained. Full text: https://dejavu-fonts.github.io/License.html
+
+Bitstream Vera Fonts Copyright: Copyright (c) 2003 by Bitstream, Inc. All
+Rights Reserved. Bitstream Vera is a trademark of Bitstream, Inc.
+
+DejaVu changes are in public domain. Explanation of copyright is on:
+https://dejavu-fonts.github.io/License.html

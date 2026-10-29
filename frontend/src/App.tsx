@@ -24,8 +24,11 @@ import { ComparisonPage } from "./pages/ComparisonPage";
 import { QuarterlyReviewPage } from "./pages/QuarterlyReviewPage";
 import { SpendingTrackerPage } from "./pages/SpendingTrackerPage";
 import { TaxDocumentsPage } from "./pages/TaxDocumentsPage";
+import { ReportsPage } from "./pages/ReportsPage";
 import { SocialSecurityPage } from "./pages/SocialSecurityPage";
 import { InsightsPage } from "./pages/InsightsPage";
+import { TasksPage } from "./pages/TasksPage";
+import { AnnualWizardPage } from "./pages/AnnualWizardPage";
 import { CollaborationPage } from "./pages/CollaborationPage";
 
 function RequireAuth({ children }: { children: ReactNode }) {
@@ -119,11 +122,20 @@ function Header() {
           <NavLink to="/quarterly-review" className={({ isActive }) => (isActive ? "active" : "")}>
             Review
           </NavLink>
+          <NavLink to="/annual-wizard" className={({ isActive }) => (isActive ? "active" : "")}>
+            Annual Plan
+          </NavLink>
           <NavLink to="/insights" className={({ isActive }) => (isActive ? "active" : "")}>
             Insights
           </NavLink>
+          <NavLink to="/tasks" className={({ isActive }) => (isActive ? "active" : "")}>
+            Tasks
+          </NavLink>
           <NavLink to="/tax-documents" className={({ isActive }) => (isActive ? "active" : "")}>
             Tax docs
+          </NavLink>
+          <NavLink to="/reports" className={({ isActive }) => (isActive ? "active" : "")}>
+            Reports
           </NavLink>
           <NavLink to="/social-security" className={({ isActive }) => (isActive ? "active" : "")}>
             Social Security
@@ -283,10 +295,34 @@ function Shell() {
             }
           />
           <Route
+            path="/tasks"
+            element={
+              <RequireAuth>
+                <TasksPage />
+              </RequireAuth>
+            }
+          />
+          <Route
+            path="/annual-wizard"
+            element={
+              <RequireAuth>
+                <AnnualWizardPage />
+              </RequireAuth>
+            }
+          />
+          <Route
             path="/tax-documents"
             element={
               <RequireAuth>
                 <TaxDocumentsPage />
+              </RequireAuth>
+            }
+          />
+          <Route
+            path="/reports"
+            element={
+              <RequireAuth>
+                <ReportsPage />
               </RequireAuth>
             }
           />

@@ -87,6 +87,8 @@ pub async fn upsert_assumptions(
         aca_benchmark_annual_premium: payload.aca_benchmark_annual_premium,
         medicare_part_b_annual_premium: payload.medicare_part_b_annual_premium,
         avoid_early_withdrawal_penalty: payload.avoid_early_withdrawal_penalty,
+        medicare_enrollment_age: payload.medicare_enrollment_age,
+        roth_conversion_mode: payload.roth_conversion_mode.as_str().to_string(),
     };
 
     let pool = pool.clone();
@@ -122,6 +124,8 @@ pub async fn upsert_assumptions(
                             .eq(new_row.medicare_part_b_annual_premium),
                         assumptions::avoid_early_withdrawal_penalty
                             .eq(new_row.avoid_early_withdrawal_penalty),
+                        assumptions::medicare_enrollment_age.eq(new_row.medicare_enrollment_age),
+                        assumptions::roth_conversion_mode.eq(new_row.roth_conversion_mode.clone()),
                     ))
                     .execute(&mut conn)?;
             }

@@ -39,6 +39,15 @@ diesel::table! {
 }
 
 diesel::table! {
+    annual_plan_reviews (id) {
+        id -> Text,
+        user_id -> Text,
+        year -> Integer,
+        completed_at -> Timestamp,
+    }
+}
+
+diesel::table! {
     assumptions (id) {
         id -> Text,
         user_id -> Text,
@@ -55,6 +64,8 @@ diesel::table! {
         withdrawal_strategy -> Text,
         medicare_part_b_annual_premium -> Double,
         avoid_early_withdrawal_penalty -> Bool,
+        medicare_enrollment_age -> Integer,
+        roth_conversion_mode -> Text,
     }
 }
 
@@ -358,6 +369,15 @@ diesel::table! {
 }
 
 diesel::table! {
+    task_completions (id) {
+        id -> Text,
+        user_id -> Text,
+        task_key -> Text,
+        completed_at -> Timestamp,
+    }
+}
+
+diesel::table! {
     users (id) {
         id -> Text,
         email -> Text,
@@ -368,6 +388,7 @@ diesel::table! {
 }
 
 diesel::joinable!(accounts -> users (user_id));
+diesel::joinable!(annual_plan_reviews -> users (user_id));
 diesel::joinable!(assumptions -> users (user_id));
 diesel::joinable!(income_sources -> users (user_id));
 diesel::joinable!(life_events -> users (user_id));
@@ -391,11 +412,13 @@ diesel::joinable!(spending_tracker_transactions -> spending_tracker_categories (
 diesel::joinable!(spending_tracker_transactions -> spending_tracker_imports (import_id));
 diesel::joinable!(spending_tracker_transactions -> users (user_id));
 diesel::joinable!(tax_documents -> users (user_id));
+diesel::joinable!(task_completions -> users (user_id));
 
 diesel::allow_tables_to_appear_in_same_query!(
     aca_applicable_percentages,
     aca_fpl_guidelines,
     accounts,
+    annual_plan_reviews,
     assumptions,
     collaborators,
     income_sources,
@@ -415,6 +438,7 @@ diesel::allow_tables_to_appear_in_same_query!(
     spending_tracker_transactions,
     state_tax_brackets,
     state_tax_params,
+    task_completions,
     tax_brackets,
     tax_documents,
     tax_filing_params,

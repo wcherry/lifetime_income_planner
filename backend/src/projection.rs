@@ -66,6 +66,15 @@ pub struct ProjectionInputs<'a> {
     /// rather than drawing from them and paying the 10% early-withdrawal
     /// penalty. Roth conversions are unaffected — they aren't withdrawals.
     pub avoid_early_withdrawal_penalty: bool,
+    /// Medicare enrollment age (Phase 3, feature 3): the age at which Part B
+    /// premiums and IRMAA enrollment counting begin, per household member.
+    /// Defaults to 65; a later age models delayed enrollment.
+    pub medicare_enrollment_age: i32,
+    /// Roth conversion sizing mode (Phase 3, feature 6): `"fixed_ceiling"`
+    /// (default; a flat AGI ceiling every year) or `"irmaa_aware"` (size the
+    /// conversion to stay under the next Medicare IRMAA bracket two years
+    /// out, tapering as RMDs fill that room).
+    pub roth_conversion_mode: String,
     /// Reference tax parameters (brackets, deductions, state rates), loaded from
     /// the database and read by the tax engine.
     pub tax_tables: TaxTables,
@@ -97,6 +106,26 @@ impl WithdrawalStrategyKind {
             "tax_optimized" => WithdrawalStrategyKind::TaxOptimized,
             "maximize_income" => WithdrawalStrategyKind::MaximizeIncome,
             _ => WithdrawalStrategyKind::Conventional,
+        }
+    }
+}
+
+/// Roth conversion sizing mode (Phase 3, feature 6), parsed from the stored
+/// assumptions string.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum RothConversionModeKind {
+    /// Fill taxable income to a flat, user-chosen AGI ceiling every year.
+    FixedCeiling,
+    /// Size the conversion to stay under the next Medicare IRMAA bracket two
+    /// years out, tapering as RMDs fill that room.
+    IrmaaAware,
+}
+
+impl RothConversionModeKind {
+    fn from_str(s: &str) -> Self {
+        match s {
+            "irmaa_aware" => RothConversionModeKind::IrmaaAware,
+            _ => RothConversionModeKind::FixedCeiling,
         }
     }
 }
@@ -337,9 +366,11 @@ fn compute_household_rmd(
 /// Household Medicare Part B premiums due for the year (Phase 3, feature 3):
 /// the standard annual premium, inflation-indexed from `current_year` by the
 /// healthcare inflation rate, charged once per household member who has
-/// reached 65 this year. `spouse_birth_year` is the spouse's birth year, if
-/// any. This models the base premium only — the IRMAA income-based surcharge
-/// is a later phase.
+/// reached `enrollment_age` this year (Phase 3, feature 3: defaults to 65,
+/// but a later age models someone delaying enrollment for other creditable
+/// coverage). `spouse_birth_year` is the spouse's birth year, if any. This
+/// models the base premium only — the IRMAA income-based surcharge is
+/// computed separately.
 fn compute_medicare_part_b_premiums(
     annual_premium: f64,
     primary_birth_year: i32,
@@ -347,6 +378,7 @@ fn compute_medicare_part_b_premiums(
     current_year: i32,
     healthcare_inflation_rate: f64,
     spouse_birth_year: Option<i32>,
+    enrollment_age: i32,
 ) -> f64 {
     if annual_premium <= 0.0 {
         return 0.0;
@@ -354,11 +386,11 @@ fn compute_medicare_part_b_premiums(
     let per_person =
         annual_premium * growth_factor(healthcare_inflation_rate, year - current_year);
     let mut total = 0.0;
-    if year - primary_birth_year >= 65 {
+    if year - primary_birth_year >= enrollment_age {
         total += per_person;
     }
     if let Some(sby) = spouse_birth_year {
-        if year - sby >= 65 {
+        if year - sby >= enrollment_age {
             total += per_person;
         }
     }
@@ -386,6 +418,7 @@ fn person_milestones(dob: NaiveDate, who: &str) -> Vec<(i32, Milestone)> {
                 label: "Penalty-free withdrawals".into(),
                 detail: format!("Penalty-free IRA and 401(k) withdrawals for {who} (age 59½)."),
                 age: 59,
+                is_regulatory: false,
             },
         ));
     }
@@ -395,6 +428,7 @@ fn person_milestones(dob: NaiveDate, who: &str) -> Vec<(i32, Milestone)> {
             label: "Social Security eligibility".into(),
             detail: format!("Earliest Social Security for {who} (age 62, reduced benefit)."),
             age: 62,
+            is_regulatory: false,
         },
     ));
     // Medicare enrollment window (Phase 3, feature 3): the Initial Enrollment
@@ -412,6 +446,7 @@ fn person_milestones(dob: NaiveDate, who: &str) -> Vec<(i32, Milestone)> {
                     "The Medicare Initial Enrollment Period begins for {who} — 3 months before turning 65."
                 ),
                 age: 64,
+                is_regulatory: true,
             },
         ));
     }
@@ -421,6 +456,7 @@ fn person_milestones(dob: NaiveDate, who: &str) -> Vec<(i32, Milestone)> {
             label: "Medicare eligibility".into(),
             detail: format!("Medicare eligibility begins for {who} (age 65)."),
             age: 65,
+            is_regulatory: false,
         },
     ));
     if let Some(y) = milestone_year(dob, 65 * 12 + 3) {
@@ -433,6 +469,7 @@ fn person_milestones(dob: NaiveDate, who: &str) -> Vec<(i32, Milestone)> {
                      without other creditable coverage risks a lifetime Part B late-enrollment penalty."
                 ),
                 age: 65,
+                is_regulatory: true,
             },
         ));
     }
@@ -450,6 +487,7 @@ fn person_milestones(dob: NaiveDate, who: &str) -> Vec<(i32, Milestone)> {
                 label: "Full retirement age".into(),
                 detail: format!("Full Social Security retirement age for {who} ({fra})."),
                 age: yrs as i32,
+                is_regulatory: false,
             },
         ));
     }
@@ -459,6 +497,7 @@ fn person_milestones(dob: NaiveDate, who: &str) -> Vec<(i32, Milestone)> {
             label: "Maximum Social Security".into(),
             detail: format!("Delayed retirement credits stop growing for {who} (age 70)."),
             age: 70,
+            is_regulatory: false,
         },
     ));
     let ra = rmd_age(by);
@@ -468,6 +507,7 @@ fn person_milestones(dob: NaiveDate, who: &str) -> Vec<(i32, Milestone)> {
             label: "RMDs begin".into(),
             detail: format!("Required minimum distributions must begin for {who} (age {ra})."),
             age: ra,
+            is_regulatory: true,
         },
     ));
     out
@@ -486,6 +526,7 @@ fn build_milestones(profile: &Profile, start_year: i32, end_year: i32) -> HashMa
             label: "Planned retirement".into(),
             detail: "Your planned retirement date.".into(),
             age: profile.retirement_date.year() - profile.date_of_birth.year(),
+            is_regulatory: false,
         },
     ));
 
@@ -771,6 +812,7 @@ fn run_projection_inner(
             inp.current_year,
             inp.healthcare_inflation_rate,
             spouse_birth_year,
+            inp.medicare_enrollment_age,
         );
 
         // ---- Medicare IRMAA surcharge (Phase 3, feature 4) -----------------
@@ -796,8 +838,9 @@ fn run_projection_inner(
             },
             &inp.irmaa_tables,
         );
-        let irmaa_enrolled_count = (year - birth_year >= 65) as i32
-            + spouse_birth_year.map_or(0, |sby| (year - sby >= 65) as i32);
+        let irmaa_enrolled_count = (year - birth_year >= inp.medicare_enrollment_age) as i32
+            + spouse_birth_year
+                .map_or(0, |sby| (year - sby >= inp.medicare_enrollment_age) as i32);
         let irmaa_surcharge = if irmaa.applies {
             irmaa_enrolled_count as f64
                 * (irmaa.part_b_surcharge_monthly + irmaa.part_d_surcharge_monthly)
@@ -813,26 +856,45 @@ fn run_projection_inner(
         let seniors = seniors_65_plus(inp.profile, filing_status, year);
 
         // ---- Roth conversion (feature 6) ----------------------------------
-        // Convert traditional (tax-deferred) dollars to Roth (tax-free) until
-        // this year's taxable income reaches the configured ceiling. The
+        // Convert traditional (tax-deferred) dollars to Roth (tax-free). The
         // converted amount is ordinary income (raising the tax that the
         // withdrawal solve below must fund); the principal itself moves between
-        // accounts rather than being spent. The "room" is measured against a
-        // baseline that excludes spending-driven tax-deferred draws and
-        // realized capital gains, so a conversion fills the bracket the user
-        // targeted without depending on the (yet-unsolved) withdrawal plan.
-        let roth_conversion = plan_roth_conversion(
-            inp,
-            filing_status,
-            year,
-            seniors,
-            ordinary_income_sources + taxable_life_inflow,
-            qualified_dividends,
-            ss_benefits,
-            &balances,
-            &order,
-            roth_dest,
-        );
+        // accounts rather than being spent. Two sizing modes: the default
+        // fixed-ceiling mode fills to a flat, user-chosen taxable-income
+        // target every year (measured against a baseline that excludes
+        // spending-driven tax-deferred draws and realized capital gains, so it
+        // doesn't depend on the yet-unsolved withdrawal plan); the
+        // IRMAA-aware mode (Phase 3, feature 6) instead sizes the conversion
+        // to stay under the household's next Medicare IRMAA bracket two years
+        // out, with a baseline that *does* include this year's RMD so the
+        // room shrinks — and eventually disappears — as RMDs grow into it.
+        let roth_conversion = match RothConversionModeKind::from_str(&inp.roth_conversion_mode) {
+            RothConversionModeKind::IrmaaAware => plan_irmaa_aware_roth_conversion(
+                inp,
+                filing_status,
+                IrmaaFilingGroup::from_filing_status(filing_status),
+                year,
+                seniors,
+                ordinary_income_sources + taxable_life_inflow + rmd_amount,
+                qualified_dividends,
+                ss_benefits,
+                &balances,
+                &order,
+                roth_dest,
+            ),
+            RothConversionModeKind::FixedCeiling => plan_roth_conversion(
+                inp,
+                filing_status,
+                year,
+                seniors,
+                ordinary_income_sources + taxable_life_inflow,
+                qualified_dividends,
+                ss_benefits,
+                &balances,
+                &order,
+                roth_dest,
+            ),
+        };
         if roth_conversion > 0.0 {
             if let Some(dest) = roth_dest {
                 let mut remaining = roth_conversion;
@@ -1208,6 +1270,8 @@ fn run_projection_inner(
             aca_benchmark_annual_premium: inp.aca_benchmark_annual_premium,
             medicare_part_b_annual_premium: inp.medicare_part_b_annual_premium,
             avoid_early_withdrawal_penalty: inp.avoid_early_withdrawal_penalty,
+            medicare_enrollment_age: inp.medicare_enrollment_age,
+            roth_conversion_mode: inp.roth_conversion_mode.clone(),
             is_default: inp.assumptions_are_default,
         },
         summary: ProjectionSummary {
@@ -1421,6 +1485,102 @@ fn plan_roth_conversion(
     );
     let target_agi = inp.roth_conversion_ceiling + baseline.standard_deduction;
     let room = (target_agi - baseline.adjusted_gross_income).max(0.0);
+    room.min(deferred_available)
+}
+
+/// A small buffer below an IRMAA bracket threshold the "IRMAA-aware" Roth
+/// conversion mode targets, so the result lands strictly under the tier
+/// rather than exactly on its edge (where the surcharge would apply).
+const IRMAA_AWARE_CONVERSION_BUFFER: f64 = 1.0;
+
+/// Decide how much to convert from tax-deferred to Roth for a single year
+/// under the "IRMAA-aware" mode (feature 6): unlike [`plan_roth_conversion`]'s
+/// flat AGI ceiling, this sizes the conversion to stay just under the
+/// household's next Medicare IRMAA bracket two years out — the actual CMS
+/// MAGI lookback — so a conversion made this year doesn't push the household
+/// into a higher-surcharge tier once it's assessed. `baseline_ordinary_income`
+/// is expected to include this year's RMD (unlike the fixed-ceiling mode's
+/// baseline), so the room available shrinks as RMDs grow and reaches zero
+/// once RMDs alone meet or exceed the target — the "timing around RMDs" half
+/// of the feature. A nonzero `roth_conversion_ceiling`, if also configured,
+/// applies as an additional upper bound. Returns 0 when out of the
+/// conversion window or there's no tax-free destination account; capped by
+/// the available tax-deferred balance.
+#[allow(clippy::too_many_arguments)]
+fn plan_irmaa_aware_roth_conversion(
+    inp: &ProjectionInputs,
+    filing_status: FilingStatusKind,
+    filing_group: IrmaaFilingGroup,
+    year: i32,
+    seniors: u8,
+    baseline_ordinary_income: f64,
+    qualified_dividends: f64,
+    ss_benefits: f64,
+    balances: &[f64],
+    order: &[usize],
+    roth_dest: Option<usize>,
+) -> f64 {
+    if roth_dest.is_none() {
+        return 0.0;
+    }
+    let in_window = inp.roth_conversion_start_year.map_or(true, |s| year >= s)
+        && inp.roth_conversion_end_year.map_or(true, |e| year <= e);
+    if !in_window {
+        return 0.0;
+    }
+    let deferred_available: f64 = order
+        .iter()
+        .filter(|&&i| inp.accounts[i].category == "tax_deferred")
+        .map(|&i| balances[i])
+        .sum();
+    if deferred_available <= 0.0 {
+        return 0.0;
+    }
+
+    let baseline = compute_taxes(
+        &TaxInput {
+            early_withdrawal_penalty: 0.0,
+            year,
+            filing_status,
+            inflation_rate: inp.inflation_rate,
+            seniors_65_plus: seniors,
+            ordinary_income: baseline_ordinary_income,
+            qualified_dividends,
+            long_term_capital_gains: 0.0,
+            social_security_benefits: ss_benefits,
+            state: &inp.profile.state,
+        },
+        &inp.tax_tables,
+    );
+    let baseline_magi = compute_magi(&baseline, ss_benefits);
+
+    // This year's MAGI is looked back at for IRMAA in `year + 2` (the actual
+    // CMS lookback) — target just under whatever tier applies then.
+    let irmaa_room = match inp
+        .irmaa_tables
+        .next_threshold(filing_group, year + 2, inp.inflation_rate, baseline_magi)
+    {
+        Some(threshold) => {
+            let target_magi = threshold - IRMAA_AWARE_CONVERSION_BUFFER;
+            // MAGI = AGI + untaxed Social Security; convert the MAGI target
+            // back to AGI space using the same untaxed-SS offset (a fixed
+            // amount, independent of the conversion size, matching the
+            // approximation `plan_roth_conversion` already makes).
+            let untaxed_ss = ss_benefits - baseline.taxable_social_security;
+            let target_agi = target_magi - untaxed_ss;
+            (target_agi - baseline.adjusted_gross_income).max(0.0)
+        }
+        // Already at/above the top bracket: no further IRMAA tier to avoid.
+        None => f64::INFINITY,
+    };
+
+    let room = if inp.roth_conversion_ceiling > 0.0 {
+        let target_agi_ceiling = inp.roth_conversion_ceiling + baseline.standard_deduction;
+        let ceiling_room = (target_agi_ceiling - baseline.adjusted_gross_income).max(0.0);
+        irmaa_room.min(ceiling_room)
+    } else {
+        irmaa_room
+    };
     room.min(deferred_available)
 }
 
@@ -1828,6 +1988,8 @@ mod tests {
             aca_benchmark_annual_premium: 0.0,
             medicare_part_b_annual_premium: 0.0,
             avoid_early_withdrawal_penalty: false,
+            medicare_enrollment_age: 65,
+            roth_conversion_mode: "fixed_ceiling".to_string(),
             tax_tables: TaxTables::default_2025(),
             aca_tables: crate::aca::AcaTables::default_2025(),
             irmaa_tables: IrmaaTables::default_2025(),
@@ -2301,6 +2463,88 @@ mod tests {
         let out = run_projection(&inputs);
         assert_eq!(out.annual[0].roth_conversion, 0.0);
         assert_eq!(out.annual[0].taxes, 0.0);
+    }
+
+    // ---- Phase 3, feature 6: IRMAA/RMD-aware Roth conversion timing --------
+
+    /// Cash to pay the conversion tax (so the IRA isn't tapped and grossed
+    /// up beyond the planned conversion itself), a large traditional IRA, and
+    /// a Roth to receive the conversion — same shape as
+    /// `roth_conversion_fills_up_to_the_ceiling`.
+    fn irmaa_aware_accounts() -> [Account; 3] {
+        let mut cash = account("cash", "taxable", 200_000.0, 0.0);
+        cash.cost_basis = Some(200_000.0); // no embedded gain
+        [
+            cash,
+            account("ira", "tax_deferred", 2_000_000.0, 0.0),
+            account("roth", "tax_free", 0.0, 0.0),
+        ]
+    }
+
+    #[test]
+    fn irmaa_aware_roth_conversion_fills_up_to_the_next_irmaa_tier() {
+        // No other income and below RMD age: the whole conversion room comes
+        // from the gap between $0 MAGI and the first single IRMAA tier
+        // ($106,000, with 0% inflation so the base-year threshold applies
+        // as-is), minus the $1 avoidance buffer.
+        let p = profile(1965, 2026 - 1965); // 61 in 2026, RMD age is 75
+        let accts = irmaa_aware_accounts();
+        let mut inputs = base_inputs(&p, &accts, &[], &[], &[]);
+        inputs.roth_conversion_mode = "irmaa_aware".to_string();
+        let out = run_projection(&inputs);
+        let y = &out.annual[0];
+        assert!((y.roth_conversion - 105_999.0).abs() < 50.0);
+        assert!(y.tax.magi < 106_000.0);
+    }
+
+    #[test]
+    fn irmaa_aware_roth_conversion_shrinks_as_rmd_grows() {
+        // Same $2M IRA and IRMAA tier target as above, but the household is
+        // now well past RMD age. The forced RMD already counts toward the
+        // tier, so the voluntary conversion should shrink to whatever room
+        // the RMD hasn't already used — landing the *combined* ordinary
+        // income (RMD + conversion) at roughly the same tier target as the
+        // no-RMD case, rather than stacking on top of it.
+        let below_rmd_age = {
+            let p = profile(1965, 2026 - 1965); // 61 in 2026
+            let accts = irmaa_aware_accounts();
+            let mut inputs = base_inputs(&p, &accts, &[], &[], &[]);
+            inputs.roth_conversion_mode = "irmaa_aware".to_string();
+            run_projection(&inputs).annual[0].roth_conversion
+        };
+        let p = profile(1950, 2026 - 1950); // 76 in 2026, well past RMD age 72
+        let accts = irmaa_aware_accounts();
+        let mut inputs = base_inputs(&p, &accts, &[], &[], &[]);
+        inputs.roth_conversion_mode = "irmaa_aware".to_string();
+        let out = run_projection(&inputs);
+        let y = &out.annual[0];
+        assert!(y.rmd_amount > 0.0);
+        assert!(
+            y.roth_conversion < below_rmd_age,
+            "the RMD should crowd out most of the discretionary conversion"
+        );
+        assert!(
+            (y.rmd_amount + y.roth_conversion - 105_999.0).abs() < 100.0,
+            "RMD + conversion should still target the same IRMAA tier, RMD={}, conversion={}",
+            y.rmd_amount,
+            y.roth_conversion
+        );
+    }
+
+    #[test]
+    fn irmaa_aware_roth_conversion_respects_a_flat_ceiling_as_an_extra_cap() {
+        // Same setup as `roth_conversion_fills_up_to_the_ceiling`, but in
+        // IRMAA-aware mode: the $50k taxable-income ceiling (67k AGI, given
+        // the 17k standard deduction at age 66) is the binding constraint
+        // here since it's tighter than the ~106k IRMAA-tier room.
+        let p = profile(1960, 2026 - 1960);
+        let accts = irmaa_aware_accounts();
+        let mut inputs = base_inputs(&p, &accts, &[], &[], &[]);
+        inputs.roth_conversion_mode = "irmaa_aware".to_string();
+        inputs.roth_conversion_ceiling = 50_000.0;
+        let out = run_projection(&inputs);
+        let y = &out.annual[0];
+        assert!((y.roth_conversion - 67_000.0).abs() < 50.0);
     }
 
     // ---- Phase 2, feature 7: estimated quarterly taxes ----------------------
@@ -2847,6 +3091,45 @@ mod tests {
         assert!(labels(2030).contains(&"Medicare enrollment window opens".to_string()));
         assert!(labels(2030).contains(&"Medicare eligibility".to_string()));
         assert!(labels(2030).contains(&"Medicare enrollment window closes".to_string()));
+    }
+
+    #[test]
+    fn delayed_medicare_enrollment_age_pushes_back_the_part_b_premium() {
+        // Born 1961 -> 65 in 2026. With a delayed enrollment age of 70, the
+        // premium shouldn't start until 2031.
+        let p = profile(1961, 2032 - 1961);
+        let mut inputs = base_inputs(&p, &[], &[], &[], &[]);
+        inputs.medicare_part_b_annual_premium = 2_220.0;
+        inputs.medicare_enrollment_age = 70;
+        let out = run_projection(&inputs);
+        let y2026 = out.annual.iter().find(|r| r.year == 2026).unwrap(); // 65
+        let y2030 = out.annual.iter().find(|r| r.year == 2030).unwrap(); // 69
+        let y2031 = out.annual.iter().find(|r| r.year == 2031).unwrap(); // 70
+        assert_eq!(y2026.medicare_premiums, 0.0);
+        assert_eq!(y2030.medicare_premiums, 0.0);
+        assert_eq!(y2031.medicare_premiums, 2_220.0);
+    }
+
+    #[test]
+    fn delayed_medicare_enrollment_age_also_delays_irmaa_enrollment_counting() {
+        // Born 1959 -> 69 in 2028, 70 in 2029. High pension income sits well
+        // inside an IRMAA tier once lookback data exists (from 2028, using
+        // 2026's MAGI), but with enrollment delayed to 70 the household
+        // shouldn't be counted as enrolled — and so shouldn't pay any
+        // surcharge — until 2029.
+        let p = profile(1959, 2032 - 1959);
+        let inc = [income("pension", 150_000.0, "annual", date(2020, 1, 1), false, 0.0)];
+        let mut inputs = base_inputs(&p, &[], &inc, &[], &[]);
+        inputs.medicare_part_b_annual_premium = 2_220.0;
+        inputs.medicare_enrollment_age = 70;
+        let out = run_projection(&inputs);
+        let y2028 = out.annual.iter().find(|r| r.year == 2028).unwrap(); // 69
+        let y2029 = out.annual.iter().find(|r| r.year == 2029).unwrap(); // 70
+        assert!(y2028.irmaa.has_lookback_data);
+        assert_eq!(y2028.irmaa.enrolled_count, 0);
+        assert_eq!(y2028.irmaa_surcharge, 0.0);
+        assert_eq!(y2029.irmaa.enrolled_count, 1);
+        assert!(y2029.irmaa_surcharge > 0.0);
     }
 
     // ---- Phase 3, feature 4: Medicare IRMAA surcharge -----------------------

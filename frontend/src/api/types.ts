@@ -226,6 +226,9 @@ export interface LifeEventRequest {
 
 export type WithdrawalStrategy = "conventional" | "tax_optimized" | "maximize_income";
 
+/** Roth conversion sizing mode (Phase 3, feature 6). */
+export type RothConversionMode = "fixed_ceiling" | "irmaa_aware";
+
 export interface Assumptions {
   inflation_rate: number;
   investment_return_rate: number;
@@ -239,6 +242,9 @@ export interface Assumptions {
   medicare_part_b_annual_premium: number;
   /** "Don't incur penalties": excludes tax-deferred accounts from the drawdown order before age 59½. */
   avoid_early_withdrawal_penalty: boolean;
+  /** Age at which Part B premiums and IRMAA enrollment counting begin. Defaults to 65. */
+  medicare_enrollment_age: number;
+  roth_conversion_mode: RothConversionMode;
   is_default: boolean;
   updated_at: string | null;
 }
@@ -255,6 +261,8 @@ export interface AssumptionsRequest {
   withdrawal_strategy: WithdrawalStrategy;
   medicare_part_b_annual_premium: number;
   avoid_early_withdrawal_penalty: boolean;
+  medicare_enrollment_age: number;
+  roth_conversion_mode: RothConversionMode;
 }
 
 export interface ProjectionAssumptions {
@@ -270,6 +278,9 @@ export interface ProjectionAssumptions {
   aca_benchmark_annual_premium: number;
   medicare_part_b_annual_premium: number;
   avoid_early_withdrawal_penalty: boolean;
+  medicare_enrollment_age: number;
+  /** Roth conversion sizing mode (feature 6): "fixed_ceiling" or "irmaa_aware". */
+  roth_conversion_mode: string;
   is_default: boolean;
 }
 
@@ -359,6 +370,8 @@ export interface Milestone {
   label: string;
   detail: string;
   age: number;
+  /** True for milestones with a real compliance deadline (also surfaced as a regulatory alert). */
+  is_regulatory: boolean;
 }
 
 export interface YearAccountBalance {
@@ -914,7 +927,8 @@ export type InsightCategory =
   | "unexpected_spending"
   | "quarterly_review_due"
   | "aggressive_portfolio"
-  | "sequence_of_return_risk";
+  | "sequence_of_return_risk"
+  | "regulatory_milestone";
 
 export type InsightSeverity = "low" | "medium" | "high";
 
@@ -923,6 +937,40 @@ export interface Insight {
   severity: InsightSeverity;
   title: string;
   message: string;
+}
+
+// --- Phase 5: task lists and reminders ---
+
+export type TaskCategory =
+  | "withdrawal"
+  | "estimated_tax"
+  | "roth_conversion"
+  | "rmd"
+  | "aca_renewal"
+  | "regulatory";
+
+export interface Task {
+  key: string;
+  category: TaskCategory;
+  title: string;
+  detail: string;
+  period: string;
+  completed: boolean;
+}
+
+// --- Phase 5: annual planning wizard ---
+
+export interface AnnualWizardStep {
+  key: string;
+  label: string;
+  route: string;
+  hint: string;
+}
+
+export interface AnnualWizard {
+  year: number;
+  completed: boolean;
+  steps: AnnualWizardStep[];
 }
 
 // --- Phase 6: collaboration (spouses & advisors) ---

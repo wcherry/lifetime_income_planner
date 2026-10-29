@@ -11,7 +11,7 @@ struct Config {
     frontend_dir: PathBuf,
 }
 
-const USAGE: &str = "Usage: cargo xtask <task> [args…]\n\nTasks:\n  dev           Run the backend + frontend together against the dev database\n  test-server   Run the backend against a fresh throwaway test database (see backend/.env.test)\n  test-reset    Delete the test database so the next test run starts clean\n  e2e           Run the Playwright end-to-end suite (see e2e/); extra args pass through\n  install       Install frontend dependencies (yarn install)";
+const USAGE: &str = "Usage: cargo xtask <task> [args…]\n\nTasks:\n  dev           Run the backend + frontend together against the dev database\n  test-server   Run the backend against a fresh throwaway test database (see backend/.env.test)\n  test-reset    Delete the test database so the next test run starts clean\n  e2e           Run the Playwright end-to-end suite (see e2e/); extra args pass through\n  install       Install frontend dependencies (yarn install)\n  export-fixtures [--out DIR]\n                Write golden engine fixtures for the macOS app's parity tests";
 
 fn main() {
     let mut args = env::args().skip(1);
@@ -27,6 +27,7 @@ fn main() {
         "test-reset" => reset_test_db(&cfg),
         "e2e" => run_e2e(&cfg, args.collect()),
         "install" => ensure_frontend_deps(&cfg.frontend_dir),
+        "export-fixtures" => export_fixtures(&cfg, args.collect()),
         _ => {
             eprintln!("Unknown task: {task}\n\n{USAGE}");
             process::exit(1);
@@ -46,6 +47,44 @@ fn config_from_metadata() -> Config {
         frontend_dir: root.join("frontend"),
         workspace_root: root,
     }
+}
+
+/// Run the backend's ignored `fixture_export` test, which replays fixed
+/// scenarios through the real engines and writes `{inputs, expected}` JSON
+/// for the native macOS app's parity tests. `--out DIR` picks the output
+/// directory (default: `target/parity-fixtures`).
+fn export_fixtures(cfg: &Config, args: Vec<String>) {
+    let out = match args.as_slice() {
+        [] => cfg.workspace_root.join("target").join("parity-fixtures"),
+        [flag, dir] if flag == "--out" => {
+            let dir = PathBuf::from(dir);
+            if dir.is_absolute() {
+                dir
+            } else {
+                env::current_dir().expect("current dir").join(dir)
+            }
+        }
+        _ => {
+            eprintln!("Usage: cargo xtask export-fixtures [--out DIR]");
+            process::exit(1);
+        }
+    };
+    let status = Command::new("cargo")
+        .args([
+            "test",
+            "-p",
+            "lifetime_income_planner",
+            "fixture_export::export_parity_fixtures",
+            "--",
+            "--ignored",
+            "--exact",
+            "--nocapture",
+        ])
+        .env("FIXTURE_OUT_DIR", &out)
+        .current_dir(&cfg.workspace_root)
+        .status()
+        .unwrap_or_else(|e| panic!("failed to run cargo test: {e}"));
+    process::exit(status.code().unwrap_or(1));
 }
 
 /// Install frontend dependencies if `node_modules` isn't present yet, so a fresh

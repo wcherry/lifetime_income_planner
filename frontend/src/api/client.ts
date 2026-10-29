@@ -1,6 +1,7 @@
 import type {
   Account,
   AccountRequest,
+  AnnualWizard,
   Assumptions,
   AssumptionsRequest,
   AuthResponse,
@@ -48,6 +49,7 @@ import type {
   SpendingTrackerQuarterSummary,
   SpendingTrackerTransaction,
   SpendingTrackerYearSummary,
+  Task,
   TaxDocument,
   TaxDocumentYearSummary,
   UpsertProfileRequest,
@@ -152,21 +154,20 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
 }
 
 /**
- * Download the multi-year tax-summary CSV (feature 8) and trigger a browser
- * save. A bespoke fetch (rather than `request<T>`) since the response is a
- * file, not JSON, and still needs the auth header a plain `<a href>` can't
- * carry.
+ * Download a generated report file and trigger a browser save. A bespoke
+ * fetch (rather than `request<T>`) since the response is a file, not JSON,
+ * and still needs the auth header a plain `<a href>` can't carry.
  */
-async function downloadTaxSummaryCsv(): Promise<void> {
+async function downloadFile(path: string, filename: string): Promise<void> {
   const headers: Record<string, string> = {};
   const token = getToken();
   if (token) headers["Authorization"] = `Bearer ${token}`;
   const contextUser = getContextUser();
   if (contextUser) headers["X-Context-User"] = contextUser;
 
-  const res = await fetch("/api/reports/tax-summary.csv", { headers });
+  const res = await fetch(`/api${path}`, { headers });
   if (!res.ok) {
-    let message = `Failed to download tax report (${res.status})`;
+    let message = `Failed to download ${filename} (${res.status})`;
     try {
       const data = await res.json();
       if (data && typeof data.error === "string") message = data.error;
@@ -180,7 +181,7 @@ async function downloadTaxSummaryCsv(): Promise<void> {
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
   link.href = url;
-  link.download = "tax-summary.csv";
+  link.download = filename;
   document.body.appendChild(link);
   link.click();
   link.remove();
@@ -253,7 +254,17 @@ export const api = {
   runMonteCarlo: (payload: MonteCarloRequest) =>
     request<MonteCarloResult>("POST", "/monte-carlo", payload),
 
-  downloadTaxSummaryCsv,
+  downloadTaxSummaryCsv: () => downloadFile("/reports/tax-summary.csv", "tax-summary.csv"),
+
+  downloadAnnualPlanCsv: () => downloadFile("/reports/annual-plan.csv", "annual-plan.csv"),
+
+  downloadAnnualPlanPdf: () => downloadFile("/reports/annual-plan.pdf", "annual-plan.pdf"),
+
+  downloadQuarterlyScheduleCsv: () =>
+    downloadFile("/reports/quarterly-schedule.csv", "quarterly-schedule.csv"),
+
+  downloadAssetAllocationCsv: () =>
+    downloadFile("/reports/asset-allocation.csv", "asset-allocation.csv"),
 
   listPlans: () => request<Plan[]>("GET", "/plans"),
 
@@ -325,6 +336,22 @@ export const api = {
   // --- Phase 6: personalized insights & anomaly detection ---
 
   getInsights: () => request<Insight[]>("GET", "/insights"),
+
+  // --- Phase 5: task lists and reminders ---
+
+  getTasks: () => request<Task[]>("GET", "/tasks"),
+
+  completeTask: (key: string) =>
+    request<void>("POST", `/tasks/${encodeURIComponent(key)}/complete`),
+
+  uncompleteTask: (key: string) =>
+    request<void>("DELETE", `/tasks/${encodeURIComponent(key)}/complete`),
+
+  // --- Phase 5: annual planning wizard ---
+
+  getAnnualWizard: () => request<AnnualWizard>("GET", "/annual-wizard"),
+
+  completeAnnualWizard: () => request<void>("POST", "/annual-wizard/complete"),
 
   // --- Phase 6: collaboration (spouses & advisors) ---
 

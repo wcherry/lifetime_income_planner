@@ -28,6 +28,12 @@ pub struct ProjectionAssumptions {
     /// accounts are excluded from the drawdown order before age 59½ rather
     /// than drawn from and penalized.
     pub avoid_early_withdrawal_penalty: bool,
+    /// Medicare enrollment age (Phase 3, feature 3): the age at which Part B
+    /// premiums and IRMAA enrollment counting begin, per household member.
+    pub medicare_enrollment_age: i32,
+    /// Roth conversion sizing mode (Phase 3, feature 6): `"fixed_ceiling"` or
+    /// `"irmaa_aware"`.
+    pub roth_conversion_mode: String,
     /// True when the user has not saved assumptions and defaults were used.
     pub is_default: bool,
 }
@@ -185,6 +191,11 @@ pub struct Milestone {
     pub detail: String,
     /// Age of the relevant person when the milestone is reached.
     pub age: i32,
+    /// True for milestones with a real compliance deadline (a Medicare
+    /// enrollment window, RMDs beginning) versus purely informational ones
+    /// (roadmap Phase 3, feature 7): drives which milestones also surface as
+    /// a regulatory alert via `crate::insights`.
+    pub is_regulatory: bool,
 }
 
 /// One account's balance movement within a single projection year, for the

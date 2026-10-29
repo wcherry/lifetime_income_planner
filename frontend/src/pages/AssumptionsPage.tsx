@@ -1,6 +1,6 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { api } from "../api/client";
-import type { AssumptionsRequest, WithdrawalStrategy } from "../api/types";
+import type { AssumptionsRequest, RothConversionMode, WithdrawalStrategy } from "../api/types";
 import { Alert, Button, Card, Field, Select, TextInput } from "../components/ui";
 
 // Matches the backend defaults in models/assumptions.rs.
@@ -16,6 +16,8 @@ const DEFAULTS: AssumptionsRequest = {
   aca_benchmark_annual_premium: 0,
   medicare_part_b_annual_premium: 2_220,
   avoid_early_withdrawal_penalty: false,
+  medicare_enrollment_age: 65,
+  roth_conversion_mode: "fixed_ceiling",
 };
 
 const WITHDRAWAL_STRATEGY_OPTIONS: { value: WithdrawalStrategy; label: string }[] = [
@@ -24,6 +26,14 @@ const WITHDRAWAL_STRATEGY_OPTIONS: { value: WithdrawalStrategy; label: string }[
   {
     value: "maximize_income",
     label: "Maximize income (simulate bracket-filling withdrawals to reduce future RMD tax)",
+  },
+];
+
+const ROTH_CONVERSION_MODE_OPTIONS: { value: RothConversionMode; label: string }[] = [
+  { value: "fixed_ceiling", label: "Fixed ceiling (convert to a flat taxable-income target)" },
+  {
+    value: "irmaa_aware",
+    label: "IRMAA & RMD aware (target the next Medicare IRMAA tier, tapering as RMDs grow)",
   },
 ];
 
@@ -59,6 +69,8 @@ export function AssumptionsPage() {
             aca_benchmark_annual_premium: a.aca_benchmark_annual_premium,
             medicare_part_b_annual_premium: a.medicare_part_b_annual_premium,
             avoid_early_withdrawal_penalty: a.avoid_early_withdrawal_penalty,
+            medicare_enrollment_age: a.medicare_enrollment_age,
+            roth_conversion_mode: a.roth_conversion_mode,
           });
           setUsingDefaults(a.is_default);
         }
@@ -97,6 +109,8 @@ export function AssumptionsPage() {
         aca_benchmark_annual_premium: Number(form.aca_benchmark_annual_premium),
         medicare_part_b_annual_premium: Number(form.medicare_part_b_annual_premium),
         avoid_early_withdrawal_penalty: form.avoid_early_withdrawal_penalty,
+        medicare_enrollment_age: Number(form.medicare_enrollment_age),
+        roth_conversion_mode: form.roth_conversion_mode,
       };
       await api.saveAssumptions(payload);
       setSaved(true);
@@ -187,17 +201,41 @@ export function AssumptionsPage() {
 
         <h3 className="assumptions-subhead">Roth conversion strategy</h3>
         <p className="muted">
-          Optionally convert traditional (tax-deferred) savings to Roth each year up to a target
-          taxable income — filling low-income years before RMDs and Social Security push you into
-          higher brackets. Set the ceiling to $0 to turn conversions off. Converted dollars move
-          into your first Roth account; the tax is funded like any other cash need.
+          Optionally convert traditional (tax-deferred) savings to Roth each year — filling
+          low-income years before RMDs and Social Security push you into higher brackets.
+          Converted dollars move into your first Roth account; the tax is funded like any other
+          cash need. <strong>Fixed ceiling</strong> fills to a flat taxable-income target every
+          year; set it to $0 to turn conversions off. <strong>IRMAA &amp; RMD aware</strong>
+          instead sizes each year's conversion to stay just under the Medicare IRMAA bracket your
+          MAGI will be checked against two years later, tapering off on its own as RMDs start
+          filling that room.
         </p>
+
+        <div className="grid-2">
+          <Field label="Sizing mode" htmlFor="roth-mode">
+            <Select
+              id="roth-mode"
+              value={form.roth_conversion_mode}
+              onChange={(e) => update("roth_conversion_mode", e.target.value as RothConversionMode)}
+            >
+              {ROTH_CONVERSION_MODE_OPTIONS.map((o) => (
+                <option key={o.value} value={o.value}>
+                  {o.label}
+                </option>
+              ))}
+            </Select>
+          </Field>
+        </div>
 
         <div className="grid-2">
           <Field
             label="Convert up to taxable income ($)"
             htmlFor="roth-ceiling"
-            hint="Fill each year's taxable income to this level. 0 disables conversions."
+            hint={
+              form.roth_conversion_mode === "irmaa_aware"
+                ? "Optional extra cap on top of the IRMAA-based target. 0 leaves it uncapped."
+                : "Fill each year's taxable income to this level. 0 disables conversions."
+            }
           >
             <TextInput
               id="roth-ceiling"
@@ -315,17 +353,19 @@ export function AssumptionsPage() {
 
         <h3 className="assumptions-subhead">Medicare Part B</h3>
         <p className="muted">
-          From age 65, Medicare Part B has a standard monthly premium — higher earners pay more via
-          an income-based IRMAA surcharge, modeled in a later phase. The planner adds the standard
-          premium to your annual costs automatically once each person in the household turns 65. Set
-          it to $0 if you expect other coverage (e.g. a spouse's employer plan) to pay it instead.
+          From your enrollment age, Medicare Part B has a standard monthly premium — higher
+          earners pay more via an income-based IRMAA surcharge, estimated from your projected MAGI
+          two years prior. The planner adds the standard premium to your annual costs
+          automatically once each person in the household reaches the enrollment age. Set the
+          premium to $0 if you expect other coverage (e.g. a spouse's employer plan) to pay it
+          instead.
         </p>
 
         <div className="grid-2">
           <Field
             label="Part B premium ($/yr)"
             htmlFor="medicare-part-b"
-            hint="2025 standard premium is $185.00/mo ($2,220/yr). Charged per person, per year, from age 65."
+            hint="2025 standard premium is $185.00/mo ($2,220/yr). Charged per person, per year, from the enrollment age."
           >
             <TextInput
               id="medicare-part-b"
@@ -334,6 +374,22 @@ export function AssumptionsPage() {
               min="0"
               value={form.medicare_part_b_annual_premium}
               onChange={(e) => update("medicare_part_b_annual_premium", Number(e.target.value))}
+              required
+            />
+          </Field>
+          <Field
+            label="Enrollment age"
+            htmlFor="medicare-enrollment-age"
+            hint="Delay past 65 if you (or your spouse) have other creditable coverage, e.g. an employer plan."
+          >
+            <TextInput
+              id="medicare-enrollment-age"
+              type="number"
+              step="1"
+              min="65"
+              max="70"
+              value={form.medicare_enrollment_age}
+              onChange={(e) => update("medicare_enrollment_age", Number(e.target.value))}
               required
             />
           </Field>

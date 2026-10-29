@@ -15,6 +15,7 @@ export const CATEGORY_LABELS: Record<InsightCategory, string> = {
   quarterly_review_due: "Quarterly review",
   aggressive_portfolio: "Portfolio allocation",
   sequence_of_return_risk: "Sequence-of-return risk",
+  regulatory_milestone: "Regulatory deadline",
 };
 
 const SEVERITY_ORDER: InsightSeverity[] = ["high", "medium", "low"];

@@ -1052,6 +1052,8 @@ function OptimizeCard() {
         aca_benchmark_annual_premium: current.aca_benchmark_annual_premium,
         medicare_part_b_annual_premium: current.medicare_part_b_annual_premium,
         avoid_early_withdrawal_penalty: current.avoid_early_withdrawal_penalty,
+        medicare_enrollment_age: current.medicare_enrollment_age,
+        roth_conversion_mode: current.roth_conversion_mode,
       });
       setApplied(true);
     } catch (err) {
