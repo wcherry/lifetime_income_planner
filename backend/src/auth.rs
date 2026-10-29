@@ -212,6 +212,9 @@ mod tests {
             plaid_client_id: None,
             plaid_secret: None,
             plaid_env: "sandbox".into(),
+            ai_explanation_provider: "template".into(),
+            anthropic_api_key: None,
+            anthropic_model: "claude-opus-5".into(),
         };
         let token = generate_token("user-123", &config).unwrap();
         let claims = decode_token(&token, &config.jwt_secret).unwrap();
