@@ -180,6 +180,32 @@ fn income_for_year(src: &IncomeSource, year: i32, ss_cola: f64) -> f64 {
         rate += ss_cola;
     }
     base * growth_factor(rate, year - start)
+        * active_fraction_of_year(src.start_date, src.end_date, year)
+}
+
+/// Share of a calendar year that falls within `start..=end` (both inclusive,
+/// counted by day within each month), so income that starts or stops mid-year
+/// is prorated instead of counted for the whole year.
+fn active_fraction_of_year(start: NaiveDate, end: Option<NaiveDate>, year: i32) -> f64 {
+    let days_in_month = |y: i32, m: u32| -> f64 {
+        let first = NaiveDate::from_ymd_opt(y, m, 1).expect("valid month");
+        let next = first + Months::new(1);
+        next.signed_duration_since(first).num_days() as f64
+    };
+    // Months elapsed before the source begins.
+    let mut first = 0.0;
+    if start.year() == year {
+        first = (start.month() - 1) as f64
+            + (start.day() - 1) as f64 / days_in_month(year, start.month());
+    }
+    // Months elapsed through the day the source ends.
+    let mut last = 12.0;
+    if let Some(end) = end {
+        if end.year() == year {
+            last = (end.month() - 1) as f64 + end.day() as f64 / days_in_month(year, end.month());
+        }
+    }
+    (last.min(12.0) - first).max(0.0) / 12.0
 }
 
 /// Spending incurred in a given calendar year for a single item.
@@ -1781,6 +1807,19 @@ mod tests {
         let mut i = income(name, amount, "annual", start, false, 0.0);
         i.income_type = income_type.into();
         i
+    }
+
+    #[test]
+    fn income_starting_or_ending_mid_year_is_prorated() {
+        let mut job = income("Job", 10_667.0, "monthly", date(2020, 1, 1), false, 0.0);
+        job.end_date = Some(date(2026, 9, 15));
+        let ui = income("UI", 1_800.0, "monthly", date(2026, 10, 15), false, 0.0);
+        // Job: 8 full months + half of September.
+        assert!((income_for_year(&job, 2026, 0.0) - 10_667.0 * 8.5).abs() < 1.0);
+        assert_eq!(income_for_year(&job, 2027, 0.0), 0.0);
+        // UI: Oct 15 through Dec 31 is 2 + 17/31 months.
+        assert!((income_for_year(&ui, 2026, 0.0) - 1_800.0 * (2.0 + 17.0 / 31.0)).abs() < 1.0);
+        assert_eq!(income_for_year(&ui, 2027, 0.0), 1_800.0 * 12.0);
     }
 
     fn life_event(name: &str, date: NaiveDate, direction: &str, amount: f64) -> LifeEvent {
