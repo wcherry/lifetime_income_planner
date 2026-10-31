@@ -17,6 +17,7 @@ use crate::models::{
     OptimizeRequest, OptimizeResponse, PlanSnapshot, Profile, ProjectionResponse, ProjectionSummary,
     SpendingItem, WhatIfRequest, DEFAULT_ACA_BENCHMARK_ANNUAL_PREMIUM,
     DEFAULT_AVOID_EARLY_WITHDRAWAL_PENALTY, DEFAULT_HEALTHCARE_INFLATION_RATE,
+    DEFAULT_MEDICARE_ENROLLMENT_AGE, DEFAULT_ROTH_CONVERSION_MODE,
     DEFAULT_INFLATION_RATE, DEFAULT_INVESTMENT_RETURN_RATE, DEFAULT_MEDICARE_PART_B_ANNUAL_PREMIUM,
     DEFAULT_ROTH_CONVERSION_CEILING, DEFAULT_SOCIAL_SECURITY_COLA_RATE,
     DEFAULT_WITHDRAWAL_STRATEGY,
@@ -60,6 +61,8 @@ pub(crate) struct LoadedProjectionData {
     pub aca_benchmark_annual_premium: f64,
     pub medicare_part_b_annual_premium: f64,
     pub avoid_early_withdrawal_penalty: bool,
+    pub medicare_enrollment_age: i32,
+    pub roth_conversion_mode: String,
     pub tax_tables: TaxTables,
     pub aca_tables: AcaTables,
     pub irmaa_tables: IrmaaTables,
@@ -86,6 +89,8 @@ impl LoadedProjectionData {
             aca_benchmark_annual_premium: self.aca_benchmark_annual_premium,
             medicare_part_b_annual_premium: self.medicare_part_b_annual_premium,
             avoid_early_withdrawal_penalty: self.avoid_early_withdrawal_penalty,
+            medicare_enrollment_age: self.medicare_enrollment_age,
+            roth_conversion_mode: self.roth_conversion_mode.clone(),
             tax_tables: self.tax_tables.clone(),
             aca_tables: self.aca_tables.clone(),
             irmaa_tables: self.irmaa_tables.clone(),
@@ -159,6 +164,8 @@ pub(crate) async fn load_projection_data(
         aca_benchmark_annual_premium,
         medicare_part_b_annual_premium,
         avoid_early_withdrawal_penalty,
+        medicare_enrollment_age,
+        roth_conversion_mode,
     ) = match &data.assumptions {
         Some(a) => (
             a.inflation_rate,
@@ -172,6 +179,8 @@ pub(crate) async fn load_projection_data(
             a.aca_benchmark_annual_premium,
             a.medicare_part_b_annual_premium,
             a.avoid_early_withdrawal_penalty,
+            a.medicare_enrollment_age,
+            a.roth_conversion_mode.clone(),
         ),
         None => (
             DEFAULT_INFLATION_RATE,
@@ -185,6 +194,8 @@ pub(crate) async fn load_projection_data(
             DEFAULT_ACA_BENCHMARK_ANNUAL_PREMIUM,
             DEFAULT_MEDICARE_PART_B_ANNUAL_PREMIUM,
             DEFAULT_AVOID_EARLY_WITHDRAWAL_PENALTY,
+            DEFAULT_MEDICARE_ENROLLMENT_AGE,
+            DEFAULT_ROTH_CONVERSION_MODE.to_string(),
         ),
     };
 
@@ -206,6 +217,8 @@ pub(crate) async fn load_projection_data(
         aca_benchmark_annual_premium,
         medicare_part_b_annual_premium,
         avoid_early_withdrawal_penalty,
+        medicare_enrollment_age,
+        roth_conversion_mode,
         tax_tables: data.tax_tables,
         aca_tables: data.aca_tables,
         irmaa_tables: data.irmaa_tables,
@@ -350,6 +363,8 @@ pub(crate) fn loaded_projection_data_from_snapshot(
         aca_benchmark_annual_premium,
         medicare_part_b_annual_premium,
         avoid_early_withdrawal_penalty,
+        medicare_enrollment_age,
+        roth_conversion_mode,
     ) = match &snapshot.assumptions {
         Some(a) => (
             a.inflation_rate,
@@ -363,6 +378,8 @@ pub(crate) fn loaded_projection_data_from_snapshot(
             a.aca_benchmark_annual_premium,
             a.medicare_part_b_annual_premium,
             a.avoid_early_withdrawal_penalty,
+            a.medicare_enrollment_age,
+            a.roth_conversion_mode.clone(),
         ),
         None => (
             DEFAULT_INFLATION_RATE,
@@ -376,6 +393,8 @@ pub(crate) fn loaded_projection_data_from_snapshot(
             DEFAULT_ACA_BENCHMARK_ANNUAL_PREMIUM,
             DEFAULT_MEDICARE_PART_B_ANNUAL_PREMIUM,
             DEFAULT_AVOID_EARLY_WITHDRAWAL_PENALTY,
+            DEFAULT_MEDICARE_ENROLLMENT_AGE,
+            DEFAULT_ROTH_CONVERSION_MODE.to_string(),
         ),
     };
 
@@ -397,6 +416,8 @@ pub(crate) fn loaded_projection_data_from_snapshot(
         aca_benchmark_annual_premium,
         medicare_part_b_annual_premium,
         avoid_early_withdrawal_penalty,
+        medicare_enrollment_age,
+        roth_conversion_mode,
         tax_tables,
         aca_tables,
         irmaa_tables,

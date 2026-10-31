@@ -163,6 +163,8 @@ mod tests {
                 aca_benchmark_annual_premium: 0.0,
                 medicare_part_b_annual_premium: 0.0,
                 avoid_early_withdrawal_penalty: false,
+                medicare_enrollment_age: 65,
+                roth_conversion_mode: "fixed_ceiling".to_string(),
                 is_default: false,
             },
             summary: ProjectionSummary {

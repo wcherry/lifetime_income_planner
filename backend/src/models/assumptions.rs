@@ -27,6 +27,47 @@ pub const DEFAULT_MEDICARE_PART_B_ANNUAL_PREMIUM: f64 = 2_220.0;
 /// engine may draw from tax-deferred accounts before age 59½ (paying the 10%
 /// early-withdrawal penalty) when that's what a spending need requires.
 pub const DEFAULT_AVOID_EARLY_WITHDRAWAL_PENALTY: bool = false;
+/// Age at which Medicare Part B premiums (and IRMAA) begin for each household
+/// member. Delay it (up to 70) when an employer plan provides other coverage.
+pub const DEFAULT_MEDICARE_ENROLLMENT_AGE: i32 = 65;
+/// Roth conversions fill a flat taxable-income ceiling by default.
+pub const DEFAULT_ROTH_CONVERSION_MODE: &str = "fixed_ceiling";
+
+/// How a Roth conversion is sized each year (roadmap Phase 3, feature 6).
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, ToSchema, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum RothConversionMode {
+    /// Fill taxable income to the flat `roth_conversion_ceiling` every year.
+    #[default]
+    FixedCeiling,
+    /// Size the conversion to stay under the next Medicare IRMAA tier two years
+    /// out, tapering as RMDs grow. A nonzero ceiling is an extra cap.
+    IrmaaAware,
+    /// Convert as much as keeps MAGI at or under the ACA subsidy cutoff (400% of
+    /// the poverty line once enhanced credits end), in years that cutoff
+    /// applies; fill the flat ceiling in other years.
+    AcaAware,
+}
+
+impl RothConversionMode {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            RothConversionMode::FixedCeiling => "fixed_ceiling",
+            RothConversionMode::IrmaaAware => "irmaa_aware",
+            RothConversionMode::AcaAware => "aca_aware",
+        }
+    }
+
+    /// Parse the stored string form, defaulting to the fixed ceiling for
+    /// anything unrecognized.
+    pub fn from_str(s: &str) -> Self {
+        match s {
+            "irmaa_aware" => RothConversionMode::IrmaaAware,
+            "aca_aware" => RothConversionMode::AcaAware,
+            _ => RothConversionMode::FixedCeiling,
+        }
+    }
+}
 
 /// Withdrawal sequencing strategy (roadmap Phase 2, feature 9): which order the
 /// engine draws from accounts to cover a year's cash need.
@@ -103,6 +144,10 @@ pub struct Assumptions {
     /// reached the age-59½ "Penalty-free withdrawals" milestone, rather than
     /// drawing from them and paying the 10% early-withdrawal penalty.
     pub avoid_early_withdrawal_penalty: bool,
+    /// Age at which Medicare premiums and IRMAA begin for each household member.
+    pub medicare_enrollment_age: i32,
+    /// Roth conversion sizing mode, stored as its `as_str()` form.
+    pub roth_conversion_mode: String,
 }
 
 /// Insertable row used when assumptions are first created.
@@ -123,6 +168,8 @@ pub struct NewAssumptions {
     pub withdrawal_strategy: String,
     pub medicare_part_b_annual_premium: f64,
     pub avoid_early_withdrawal_penalty: bool,
+    pub medicare_enrollment_age: i32,
+    pub roth_conversion_mode: String,
 }
 
 /// Request body for creating or replacing the planning assumptions.
@@ -186,10 +233,26 @@ pub struct AssumptionsRequest {
     #[serde(default)]
     #[schema(example = false)]
     pub avoid_early_withdrawal_penalty: bool,
+
+    /// Age at which Medicare Part B premiums (and IRMAA) begin for each
+    /// household member. Defaults to 65.
+    #[validate(range(min = 65, max = 70, message = "must be between 65 and 70"))]
+    #[serde(default = "default_medicare_enrollment_age")]
+    #[schema(example = 65)]
+    pub medicare_enrollment_age: i32,
+
+    /// How Roth conversions are sized (feature 6). Defaults to the fixed
+    /// ceiling.
+    #[serde(default)]
+    pub roth_conversion_mode: RothConversionMode,
 }
 
 fn default_medicare_part_b_annual_premium() -> f64 {
     DEFAULT_MEDICARE_PART_B_ANNUAL_PREMIUM
+}
+
+fn default_medicare_enrollment_age() -> i32 {
+    DEFAULT_MEDICARE_ENROLLMENT_AGE
 }
 
 /// API view of the planning assumptions.
@@ -206,6 +269,8 @@ pub struct AssumptionsResponse {
     pub withdrawal_strategy: WithdrawalStrategy,
     pub medicare_part_b_annual_premium: f64,
     pub avoid_early_withdrawal_penalty: bool,
+    pub medicare_enrollment_age: i32,
+    pub roth_conversion_mode: RothConversionMode,
     /// True when no assumptions have been saved yet and defaults are being returned.
     pub is_default: bool,
     #[schema(value_type = Option<String>, format = DateTime)]
@@ -227,6 +292,8 @@ impl AssumptionsResponse {
             withdrawal_strategy: WithdrawalStrategy::Conventional,
             medicare_part_b_annual_premium: DEFAULT_MEDICARE_PART_B_ANNUAL_PREMIUM,
             avoid_early_withdrawal_penalty: DEFAULT_AVOID_EARLY_WITHDRAWAL_PENALTY,
+            medicare_enrollment_age: DEFAULT_MEDICARE_ENROLLMENT_AGE,
+            roth_conversion_mode: RothConversionMode::FixedCeiling,
             is_default: true,
             updated_at: None,
         }
@@ -247,6 +314,8 @@ impl From<Assumptions> for AssumptionsResponse {
             withdrawal_strategy: WithdrawalStrategy::from_str(&a.withdrawal_strategy),
             medicare_part_b_annual_premium: a.medicare_part_b_annual_premium,
             avoid_early_withdrawal_penalty: a.avoid_early_withdrawal_penalty,
+            medicare_enrollment_age: a.medicare_enrollment_age,
+            roth_conversion_mode: RothConversionMode::from_str(&a.roth_conversion_mode),
             is_default: false,
             updated_at: Some(a.updated_at),
         }

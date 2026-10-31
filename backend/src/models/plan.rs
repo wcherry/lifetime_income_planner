@@ -116,6 +116,16 @@ pub struct AssumptionsSnapshot {
     // saved before the feature existed.
     #[serde(default)]
     pub avoid_early_withdrawal_penalty: bool,
+    // Medicare enrollment age and Roth conversion mode. Defaulted for plans
+    // saved before they existed.
+    #[serde(default = "default_snapshot_medicare_enrollment_age")]
+    pub medicare_enrollment_age: i32,
+    #[serde(default)]
+    pub roth_conversion_mode: String,
+}
+
+fn default_snapshot_medicare_enrollment_age() -> i32 {
+    65
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -254,6 +264,8 @@ impl From<&Assumptions> for AssumptionsSnapshot {
             aca_benchmark_annual_premium: a.aca_benchmark_annual_premium,
             medicare_part_b_annual_premium: a.medicare_part_b_annual_premium,
             avoid_early_withdrawal_penalty: a.avoid_early_withdrawal_penalty,
+            medicare_enrollment_age: a.medicare_enrollment_age,
+            roth_conversion_mode: a.roth_conversion_mode.clone(),
         }
     }
 }
@@ -368,6 +380,12 @@ impl AssumptionsSnapshot {
             aca_benchmark_annual_premium: self.aca_benchmark_annual_premium,
             medicare_part_b_annual_premium: self.medicare_part_b_annual_premium,
             avoid_early_withdrawal_penalty: self.avoid_early_withdrawal_penalty,
+            medicare_enrollment_age: self.medicare_enrollment_age,
+            roth_conversion_mode: if self.roth_conversion_mode.is_empty() {
+                "fixed_ceiling".to_string()
+            } else {
+                self.roth_conversion_mode.clone()
+            },
         }
     }
 }

@@ -138,6 +138,23 @@ impl IrmaaTables {
         Self::from_inputs(year, rows)
     }
 
+    /// The smallest threshold for `group`, indexed to `as_of_year`, strictly
+    /// above `magi`: the MAGI to stay under to avoid the next tier. `None` at
+    /// or above the top bracket.
+    pub fn next_threshold(
+        &self,
+        group: IrmaaFilingGroup,
+        as_of_year: i32,
+        inflation_rate_pct: f64,
+        magi: f64,
+    ) -> Option<f64> {
+        let factor = inflation_factor(self.base_year, as_of_year, inflation_rate_pct);
+        self.brackets_for(group)
+            .iter()
+            .map(|b| b.threshold * factor)
+            .find(|&t| t > magi)
+    }
+
     fn brackets_for(&self, group: IrmaaFilingGroup) -> &[Bracket] {
         match group {
             IrmaaFilingGroup::Single => &self.single,

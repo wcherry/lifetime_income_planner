@@ -226,6 +226,9 @@ export interface LifeEventRequest {
 
 export type WithdrawalStrategy = "conventional" | "tax_optimized" | "maximize_income";
 
+/** How a Roth conversion is sized each year (feature 6). */
+export type RothConversionMode = "fixed_ceiling" | "irmaa_aware" | "aca_aware";
+
 export interface Assumptions {
   inflation_rate: number;
   investment_return_rate: number;
@@ -239,6 +242,9 @@ export interface Assumptions {
   medicare_part_b_annual_premium: number;
   /** "Don't incur penalties": excludes tax-deferred accounts from the drawdown order before age 59½. */
   avoid_early_withdrawal_penalty: boolean;
+  /** Age at which Medicare Part B premiums and IRMAA begin for each household member. */
+  medicare_enrollment_age: number;
+  roth_conversion_mode: RothConversionMode;
   is_default: boolean;
   updated_at: string | null;
 }
@@ -255,6 +261,8 @@ export interface AssumptionsRequest {
   withdrawal_strategy: WithdrawalStrategy;
   medicare_part_b_annual_premium: number;
   avoid_early_withdrawal_penalty: boolean;
+  medicare_enrollment_age: number;
+  roth_conversion_mode: RothConversionMode;
 }
 
 export interface ProjectionAssumptions {
@@ -270,6 +278,8 @@ export interface ProjectionAssumptions {
   aca_benchmark_annual_premium: number;
   medicare_part_b_annual_premium: number;
   avoid_early_withdrawal_penalty: boolean;
+  medicare_enrollment_age: number;
+  roth_conversion_mode: string;
   is_default: boolean;
 }
 

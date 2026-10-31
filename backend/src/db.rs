@@ -74,3 +74,68 @@ impl r2d2::CustomizeConnection<SqliteConnection, r2d2::Error> for SqlitePragmas 
         .map_err(r2d2::Error::QueryError)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::aca::AcaRules;
+    use crate::models::aca::load_aca_tables;
+    use crate::schema::{aca_rules, aca_standard_applicable_percentages};
+    use diesel::prelude::*;
+
+    fn seeded_pool() -> DbPool {
+        let pool = build_pool(":memory:");
+        run_migrations(&pool);
+        seed_reference_data(&pool);
+        pool
+    }
+
+    #[test]
+    fn seeding_loads_the_current_aca_rules() {
+        let pool = seeded_pool();
+        let mut conn = pool.get().unwrap();
+        let tables = load_aca_tables(&mut conn).unwrap();
+        assert_eq!(tables.rules, AcaRules::current());
+        assert_eq!(tables.cutoff_magi(2026, 0.0, 1), Some(62_600.0));
+        assert_eq!(tables.cutoff_magi(2025, 0.0, 1), None);
+    }
+
+    #[test]
+    fn seeding_twice_does_not_duplicate_the_rules() {
+        let pool = seeded_pool();
+        seed_reference_data(&pool);
+        let mut conn = pool.get().unwrap();
+        let rules: i64 = aca_rules::table.count().get_result(&mut conn).unwrap();
+        let standard: i64 = aca_standard_applicable_percentages::table
+            .count()
+            .get_result(&mut conn)
+            .unwrap();
+        assert_eq!(rules, 1);
+        assert_eq!(standard as usize, AcaRules::current().standard_percentages.len());
+    }
+
+    #[test]
+    fn a_database_without_rules_keeps_the_original_single_curve() {
+        let pool = seeded_pool();
+        let mut conn = pool.get().unwrap();
+        diesel::delete(aca_rules::table).execute(&mut conn).unwrap();
+        let tables = load_aca_tables(&mut conn).unwrap();
+        assert_eq!(tables.rules, AcaRules::legacy());
+        assert_eq!(tables.cutoff_magi(2026, 0.0, 1), None);
+    }
+
+    #[test]
+    fn the_assumptions_row_matches_the_migrated_schema() {
+        use crate::models::Assumptions;
+        use crate::schema::assumptions;
+        let pool = seeded_pool();
+        let mut conn = pool.get().unwrap();
+        // The migrations added both columns; selecting the full row proves the
+        // schema and the `Assumptions` struct agree.
+        let rows: Vec<Assumptions> = assumptions::table
+            .select(Assumptions::as_select())
+            .load(&mut conn)
+            .unwrap();
+        assert!(rows.is_empty());
+    }
+}

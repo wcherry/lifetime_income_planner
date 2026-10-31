@@ -119,6 +119,7 @@ use crate::models;
         models::AssumptionsRequest,
         models::AssumptionsResponse,
         models::WithdrawalStrategy,
+        models::RothConversionMode,
         models::ProjectionResponse,
         models::ProjectionAssumptions,
         models::ProjectionSummary,

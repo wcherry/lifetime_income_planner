@@ -28,6 +28,11 @@ pub struct ProjectionAssumptions {
     /// accounts are excluded from the drawdown order before age 59½ rather
     /// than drawn from and penalized.
     pub avoid_early_withdrawal_penalty: bool,
+    /// Age at which Medicare premiums and IRMAA begin for each household member.
+    pub medicare_enrollment_age: i32,
+    /// Roth conversion sizing mode: `"fixed_ceiling"`, `"irmaa_aware"` or
+    /// `"aca_aware"`.
+    pub roth_conversion_mode: String,
     /// True when the user has not saved assumptions and defaults were used.
     pub is_default: bool,
 }
