@@ -18,6 +18,24 @@ diesel::table! {
 }
 
 diesel::table! {
+    aca_rules (id) {
+        id -> Text,
+        enhanced_through_year -> Nullable<Integer>,
+        cliff_fpl_percent -> Nullable<Double>,
+        guideline_lag_years -> Integer,
+    }
+}
+
+diesel::table! {
+    aca_standard_applicable_percentages (id) {
+        id -> Text,
+        sort_order -> Integer,
+        fpl_percent -> Double,
+        applicable_percentage -> Double,
+    }
+}
+
+diesel::table! {
     accounts (id) {
         id -> Text,
         user_id -> Text,
@@ -417,6 +435,8 @@ diesel::joinable!(task_completions -> users (user_id));
 diesel::allow_tables_to_appear_in_same_query!(
     aca_applicable_percentages,
     aca_fpl_guidelines,
+    aca_rules,
+    aca_standard_applicable_percentages,
     accounts,
     annual_plan_reviews,
     assumptions,

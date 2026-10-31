@@ -49,6 +49,10 @@ pub enum RothConversionMode {
     /// tapering off as RMDs fill that room. `roth_conversion_ceiling`, if
     /// also set, acts as an extra upper bound rather than the sole driver.
     IrmaaAware,
+    /// Convert as much as keeps MAGI at or under the ACA subsidy cutoff (400% of
+    /// the poverty line once enhanced credits end), in years that cutoff
+    /// applies; fill the flat ceiling in other years.
+    AcaAware,
 }
 
 impl RothConversionMode {
@@ -56,6 +60,7 @@ impl RothConversionMode {
         match self {
             RothConversionMode::FixedCeiling => "fixed_ceiling",
             RothConversionMode::IrmaaAware => "irmaa_aware",
+            RothConversionMode::AcaAware => "aca_aware",
         }
     }
 
@@ -64,6 +69,7 @@ impl RothConversionMode {
     pub fn from_str(s: &str) -> Self {
         match s {
             "irmaa_aware" => RothConversionMode::IrmaaAware,
+            "aca_aware" => RothConversionMode::AcaAware,
             _ => RothConversionMode::FixedCeiling,
         }
     }

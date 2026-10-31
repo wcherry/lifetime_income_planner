@@ -119,16 +119,30 @@ enum RothConversionModeKind {
     /// Size the conversion to stay under the next Medicare IRMAA bracket two
     /// years out, tapering as RMDs fill that room.
     IrmaaAware,
+    /// Convert as much as keeps MAGI at or under the ACA subsidy cutoff.
+    AcaAware,
 }
 
 impl RothConversionModeKind {
     fn from_str(s: &str) -> Self {
         match s {
             "irmaa_aware" => RothConversionModeKind::IrmaaAware,
+            "aca_aware" => RothConversionModeKind::AcaAware,
             _ => RothConversionModeKind::FixedCeiling,
         }
     }
 }
+
+/// A buffer (dollars) below the ACA cutoff so MAGI lands strictly under it.
+const ACA_AWARE_CONVERSION_BUFFER: f64 = 1.0;
+
+/// Most times a year is re-solved while searching for the largest conversion
+/// that keeps MAGI under the ACA cutoff (one more pass then settles on the
+/// best conversion found).
+const ACA_AWARE_MAX_ATTEMPTS: usize = 8;
+
+/// A conversion this close under the cutoff, in dollars, is close enough.
+const ACA_AWARE_TOLERANCE: f64 = 1.0;
 
 /// Bracket-fill targets searched by the maximize-income strategy (feature
 /// 9b): each `Some(n)` means "voluntarily draw tax-deferred dollars every
@@ -668,6 +682,7 @@ fn run_projection_inner(
 
     let filing_status = FilingStatusKind::from_str(&inp.profile.filing_status);
     let withdrawal_strategy = WithdrawalStrategyKind::from_str(&inp.withdrawal_strategy);
+    let roth_mode = RothConversionModeKind::from_str(&inp.roth_conversion_mode);
     // ACA tax-household size: a joint return is a two-person household, everyone
     // else is modeled as one (dependents are not tracked in this phase).
     let household_size = match filing_status {
@@ -882,65 +897,6 @@ fn run_projection_inner(
             income + life_events_net - spending - medicare_premiums - irmaa_surcharge;
         let seniors = seniors_65_plus(inp.profile, filing_status, year);
 
-        // ---- Roth conversion (feature 6) ----------------------------------
-        // Convert traditional (tax-deferred) dollars to Roth (tax-free). The
-        // converted amount is ordinary income (raising the tax that the
-        // withdrawal solve below must fund); the principal itself moves between
-        // accounts rather than being spent. Two sizing modes: the default
-        // fixed-ceiling mode fills to a flat, user-chosen taxable-income
-        // target every year (measured against a baseline that excludes
-        // spending-driven tax-deferred draws and realized capital gains, so it
-        // doesn't depend on the yet-unsolved withdrawal plan); the
-        // IRMAA-aware mode (Phase 3, feature 6) instead sizes the conversion
-        // to stay under the household's next Medicare IRMAA bracket two years
-        // out, with a baseline that *does* include this year's RMD so the
-        // room shrinks — and eventually disappears — as RMDs grow into it.
-        let roth_conversion = match RothConversionModeKind::from_str(&inp.roth_conversion_mode) {
-            RothConversionModeKind::IrmaaAware => plan_irmaa_aware_roth_conversion(
-                inp,
-                filing_status,
-                IrmaaFilingGroup::from_filing_status(filing_status),
-                year,
-                seniors,
-                ordinary_income_sources + taxable_life_inflow + rmd_amount,
-                qualified_dividends,
-                ss_benefits,
-                &balances,
-                &order,
-                roth_dest,
-            ),
-            RothConversionModeKind::FixedCeiling => plan_roth_conversion(
-                inp,
-                filing_status,
-                year,
-                seniors,
-                ordinary_income_sources + taxable_life_inflow,
-                qualified_dividends,
-                ss_benefits,
-                &balances,
-                &order,
-                roth_dest,
-            ),
-        };
-        if roth_conversion > 0.0 {
-            if let Some(dest) = roth_dest {
-                let mut remaining = roth_conversion;
-                for &i in &order {
-                    if remaining <= 0.0 {
-                        break;
-                    }
-                    if inp.accounts[i].category != "tax_deferred" {
-                        continue;
-                    }
-                    let take = balances[i].min(remaining);
-                    balances[i] -= take;
-                    remaining -= take;
-                }
-                // Any tiny residual (float rounding) is folded into the deposit.
-                balances[dest] += roth_conversion - remaining;
-            }
-        }
-
         // Tax-deferred accounts owned by someone who hasn't reached the
         // "Penalty-free withdrawals" milestone yet: draws from these owe the
         // 10% early-withdrawal penalty. Joint-titled tax-deferred accounts are
@@ -948,7 +904,7 @@ fn run_projection_inner(
         // `tax_deferred_balance_for_owner`) — retirement accounts can't
         // legally be jointly titled. Roth conversions are unaffected (IRC
         // §72(t) exempts conversions from the penalty); they're applied via a
-        // separate balance transfer above, never through `plan_withdrawals`.
+        // separate balance transfer below, never through `plan_withdrawals`.
         let penalized: Vec<bool> = inp
             .accounts
             .iter()
@@ -965,73 +921,6 @@ fn run_projection_inner(
             })
             .collect();
 
-        // ---- Withdrawal sequencing (Phase 2, feature 9) --------------------
-        // Conventional sequencing (`order`, computed once above) always draws
-        // taxable accounts fully before tax-deferred, then tax-free. The
-        // tax-optimized strategy instead reorders taxable accounts by
-        // ascending embedded gain (realizing the cheapest gains first) and, in
-        // years where the marginal cost of realizing a gain would exceed the
-        // marginal ordinary rate a tax-deferred withdrawal would face, draws
-        // tax-deferred funds before taxable ones. Tax-free stays last either
-        // way, preserving its growth for true shortfalls.
-        let (withdrawal_order, withdrawal_order_label): (Vec<usize>, &'static str) =
-            if withdrawal_strategy == WithdrawalStrategyKind::TaxOptimized
-                || withdrawal_strategy == WithdrawalStrategyKind::MaximizeIncome
-            {
-                optimized_withdrawal_order(
-                    inp,
-                    filing_status,
-                    year,
-                    seniors,
-                    ordinary_income_sources + taxable_life_inflow + roth_conversion,
-                    qualified_dividends,
-                    ss_benefits,
-                    &balances,
-                    &basis,
-                )
-            } else {
-                (order.clone(), "taxable_first")
-            };
-
-        // "Don't incur penalties": drop penalized tax-deferred accounts from
-        // this year's drawdown order entirely, so spending-driven withdrawals
-        // and the maximize-income strategy's voluntary bracket-fill draws
-        // (both of which pull from `withdrawal_order` via `plan_withdrawals`)
-        // never touch them before the owner turns 59½. A forced RMD never
-        // conflicts with this — RMDs never begin before age 59½.
-        let withdrawal_order: Vec<usize> = if inp.avoid_early_withdrawal_penalty {
-            withdrawal_order.into_iter().filter(|&i| !penalized[i]).collect()
-        } else {
-            withdrawal_order
-        };
-
-        // ---- Bracket-filling withdrawal (Phase 2, feature 9b) -------------
-        // Maximize-income only: on top of whatever spending and RMDs already
-        // require, voluntarily draw tax-deferred dollars to fill
-        // `bracket_fill_target` and below. This shrinks the tax-deferred
-        // balance (and so future RMDs) while the withdrawal is still being
-        // taxed at today's rate, rather than waiting for a larger, possibly
-        // higher-bracket RMD later. The caller (`run_projection_dispatch`)
-        // tries several targets as full projections and keeps whichever
-        // yields the most lifetime after-tax cash.
-        let deferred_floor = if withdrawal_strategy == WithdrawalStrategyKind::MaximizeIncome {
-            let bracket_fill = plan_bracket_fill_withdrawal(
-                inp,
-                filing_status,
-                year,
-                seniors,
-                ordinary_income_sources + taxable_life_inflow + roth_conversion,
-                qualified_dividends,
-                ss_benefits,
-                &balances,
-                bracket_fill_target,
-                taxable_dest.is_some() || roth_dest.is_some(),
-            );
-            rmd_amount.max(bracket_fill)
-        } else {
-            rmd_amount
-        };
-
         // ---- ACA subsidy eligibility (Phase 3, feature 1) -----------------
         // The premium tax credit applies before Medicare: model it whenever a
         // benchmark premium is set and the youngest household member is under
@@ -1043,73 +932,278 @@ fn run_projection_inner(
         let aca_window = inp.aca_benchmark_annual_premium > 0.0 && youngest_age < 65;
         let benchmark_this_year = inp.aca_benchmark_annual_premium
             * growth_factor(inp.healthcare_inflation_rate, year - inp.current_year);
+        // The MAGI above which the credit is lost this year, if there is a cutoff.
+        let aca_cutoff_magi: Option<f64> = if aca_window {
+            inp.aca_tables
+                .cutoff_magi(year, inp.inflation_rate, household_size)
+        } else {
+            None
+        };
 
-        // Solve withdrawals, tax, and ACA subsidy together. Drawing from a
-        // tax-deferred account (or converting to Roth) adds ordinary income,
-        // which raises tax and MAGI: more tax raises the amount that must be
-        // withdrawn, while a higher MAGI shrinks the ACA subsidy that offsets
-        // it, and any RMD shortfall still forces a floor on tax-deferred
-        // withdrawals regardless. A short fixed-point iteration settles all three.
+        // ---- Roth conversion (feature 6), the withdrawal plan it implies, and
+        // the tax and ACA subsidy solved together. One pass, except ACA-aware
+        // conversions, which are trimmed and redone if spending-driven draws
+        // push MAGI over the cutoff.
+        //
+        // Convert traditional (tax-deferred) dollars to Roth (tax-free). The
+        // converted amount is ordinary income (raising the tax that the
+        // withdrawal solve must fund); the principal itself moves between
+        // accounts rather than being spent. The "room" is measured against a
+        // baseline that excludes spending-driven tax-deferred draws and
+        // realized capital gains, so a conversion fills the bracket the user
+        // targeted without depending on the (yet-unsolved) withdrawal plan:
+        // fixed-ceiling targets a flat taxable income; IRMAA-aware targets the
+        // next IRMAA tier two years out with a baseline that includes this
+        // year's RMD, so the room shrinks as RMDs grow; ACA-aware fills the room
+        // under the ACA cutoff.
+        let balances_before_conversion = balances.clone();
+        let mut conversion_cap = f64::INFINITY;
+        // Conversions tried so far: the largest that kept MAGI under the
+        // cutoff, and the smallest that didn't, as `(conversion, magi)`.
+        let mut under_cutoff: Option<(f64, f64)> = None;
+        let mut over_cutoff: Option<(f64, f64)> = None;
+        let mut roth_conversion = 0.0;
+        let mut withdrawal_order_label: &'static str = "taxable_first";
         let mut plan = WithdrawalPlan::default();
         let mut tax = TaxResult::default();
         let mut aca = AcaResult::default();
-        let mut tax_estimate = 0.0;
         let mut subsidy = 0.0;
-        for _ in 0..12 {
-            // The subsidy is tax-free cash, so it reduces the withdrawal need.
-            let need = (tax_estimate - base_cash - subsidy).max(0.0);
-            plan = plan_withdrawals(
-                need,
-                deferred_floor,
-                &balances,
-                &basis,
-                &withdrawal_order,
-                inp.accounts,
-                &penalized,
-            );
-            let ordinary_income =
-                ordinary_income_sources + taxable_life_inflow + roth_conversion + plan.tax_deferred;
-            let early_withdrawal_penalty =
-                plan.penalized_tax_deferred * EARLY_WITHDRAWAL_PENALTY_RATE;
-            let input = TaxInput {
-                year,
-                filing_status,
-                inflation_rate: inp.inflation_rate,
-                seniors_65_plus: seniors,
-                ordinary_income,
-                qualified_dividends,
-                long_term_capital_gains: plan.capital_gains,
-                social_security_benefits: ss_benefits,
-                state: &inp.profile.state,
-                early_withdrawal_penalty,
+        for attempt in 0..=ACA_AWARE_MAX_ATTEMPTS {
+            balances.copy_from_slice(&balances_before_conversion);
+
+            let planned_conversion = match roth_mode {
+                RothConversionModeKind::IrmaaAware => plan_irmaa_aware_roth_conversion(
+                    inp,
+                    filing_status,
+                    IrmaaFilingGroup::from_filing_status(filing_status),
+                    year,
+                    seniors,
+                    ordinary_income_sources + taxable_life_inflow + rmd_amount,
+                    qualified_dividends,
+                    ss_benefits,
+                    &balances,
+                    &order,
+                    roth_dest,
+                ),
+                RothConversionModeKind::FixedCeiling => plan_roth_conversion(
+                    inp,
+                    filing_status,
+                    year,
+                    seniors,
+                    ordinary_income_sources + taxable_life_inflow,
+                    qualified_dividends,
+                    ss_benefits,
+                    &balances,
+                    &order,
+                    roth_dest,
+                ),
+                RothConversionModeKind::AcaAware => plan_aca_aware_roth_conversion(
+                    inp,
+                    filing_status,
+                    year,
+                    seniors,
+                    ordinary_income_sources + taxable_life_inflow + rmd_amount,
+                    qualified_dividends,
+                    ss_benefits,
+                    &balances,
+                    &order,
+                    roth_dest,
+                    aca_cutoff_magi,
+                ),
             };
-            tax = compute_taxes(&input, &inp.tax_tables);
+            roth_conversion = planned_conversion.min(conversion_cap);
+            if roth_conversion > 0.0 {
+                if let Some(dest) = roth_dest {
+                    let mut remaining = roth_conversion;
+                    for &i in &order {
+                        if remaining <= 0.0 {
+                            break;
+                        }
+                        if inp.accounts[i].category != "tax_deferred" {
+                            continue;
+                        }
+                        let take = balances[i].min(remaining);
+                        balances[i] -= take;
+                        remaining -= take;
+                    }
+                    // Any tiny residual (float rounding) is folded into the deposit.
+                    balances[dest] += roth_conversion - remaining;
+                }
+            }
 
-            // MAGI (Phase 3, feature 2) adds back the untaxed portion of Social
-            // Security to AGI; the ACA subsidy (when in its window) is based on it.
-            let mut new_subsidy = 0.0;
-            if aca_window {
-                let magi = compute_magi(&tax, ss_benefits);
-                aca = compute_subsidy(
-                    &AcaInput {
+            // ---- Withdrawal sequencing (Phase 2, feature 9) ----------------
+            // Conventional sequencing (`order`, computed once above) always
+            // draws taxable accounts fully before tax-deferred, then tax-free.
+            // The tax-optimized strategy instead reorders taxable accounts by
+            // ascending embedded gain (realizing the cheapest gains first)
+            // and, in years where the marginal cost of realizing a gain would
+            // exceed the marginal ordinary rate a tax-deferred withdrawal would
+            // face, draws tax-deferred funds before taxable ones. Tax-free
+            // stays last either way, preserving its growth for true shortfalls.
+            let (withdrawal_order, label): (Vec<usize>, &'static str) =
+                if withdrawal_strategy == WithdrawalStrategyKind::TaxOptimized
+                    || withdrawal_strategy == WithdrawalStrategyKind::MaximizeIncome
+                {
+                    optimized_withdrawal_order(
+                        inp,
+                        filing_status,
                         year,
-                        inflation_rate: inp.inflation_rate,
-                        magi,
-                        household_size,
-                        benchmark_annual_premium: benchmark_this_year,
-                    },
-                    &inp.aca_tables,
+                        seniors,
+                        ordinary_income_sources + taxable_life_inflow + roth_conversion,
+                        qualified_dividends,
+                        ss_benefits,
+                        &balances,
+                        &basis,
+                    )
+                } else {
+                    (order.clone(), "taxable_first")
+                };
+            withdrawal_order_label = label;
+
+            // "Don't incur penalties": drop penalized tax-deferred accounts from
+            // this year's drawdown order entirely, so spending-driven
+            // withdrawals and the maximize-income strategy's voluntary
+            // bracket-fill draws (both of which pull from `withdrawal_order`
+            // via `plan_withdrawals`) never touch them before the owner turns
+            // 59½. A forced RMD never conflicts with this — RMDs never begin
+            // before age 59½.
+            let withdrawal_order: Vec<usize> = if inp.avoid_early_withdrawal_penalty {
+                withdrawal_order.into_iter().filter(|&i| !penalized[i]).collect()
+            } else {
+                withdrawal_order
+            };
+
+            // ---- Bracket-filling withdrawal (Phase 2, feature 9b) ---------
+            // Maximize-income only: on top of whatever spending and RMDs
+            // already require, voluntarily draw tax-deferred dollars to fill
+            // `bracket_fill_target` and below. This shrinks the tax-deferred
+            // balance (and so future RMDs) while the withdrawal is still being
+            // taxed at today's rate, rather than waiting for a larger, possibly
+            // higher-bracket RMD later. The caller (`run_projection_dispatch`)
+            // tries several targets as full projections and keeps whichever
+            // yields the most lifetime after-tax cash.
+            let deferred_floor = if withdrawal_strategy == WithdrawalStrategyKind::MaximizeIncome {
+                let bracket_fill = plan_bracket_fill_withdrawal(
+                    inp,
+                    filing_status,
+                    year,
+                    seniors,
+                    ordinary_income_sources + taxable_life_inflow + roth_conversion,
+                    qualified_dividends,
+                    ss_benefits,
+                    &balances,
+                    bracket_fill_target,
+                    taxable_dest.is_some() || roth_dest.is_some(),
                 );
-                new_subsidy = aca.subsidy;
+                rmd_amount.max(bracket_fill)
+            } else {
+                rmd_amount
+            };
+
+            // Solve withdrawals, tax, and ACA subsidy together. Drawing from a
+            // tax-deferred account (or converting to Roth) adds ordinary
+            // income, which raises tax and MAGI: more tax raises the amount
+            // that must be withdrawn, while a higher MAGI shrinks the ACA
+            // subsidy that offsets it, and any RMD shortfall still forces a
+            // floor on tax-deferred withdrawals regardless. A short fixed-point
+            // iteration settles all three.
+            plan = WithdrawalPlan::default();
+            tax = TaxResult::default();
+            aca = AcaResult::default();
+            let mut tax_estimate = 0.0;
+            subsidy = 0.0;
+            for _ in 0..12 {
+                // The subsidy is tax-free cash, so it reduces the withdrawal need.
+                let need = (tax_estimate - base_cash - subsidy).max(0.0);
+                plan = plan_withdrawals(
+                    need,
+                    deferred_floor,
+                    &balances,
+                    &basis,
+                    &withdrawal_order,
+                    inp.accounts,
+                    &penalized,
+                );
+                let ordinary_income = ordinary_income_sources
+                    + taxable_life_inflow
+                    + roth_conversion
+                    + plan.tax_deferred;
+                let early_withdrawal_penalty =
+                    plan.penalized_tax_deferred * EARLY_WITHDRAWAL_PENALTY_RATE;
+                let input = TaxInput {
+                    year,
+                    filing_status,
+                    inflation_rate: inp.inflation_rate,
+                    seniors_65_plus: seniors,
+                    ordinary_income,
+                    qualified_dividends,
+                    long_term_capital_gains: plan.capital_gains,
+                    social_security_benefits: ss_benefits,
+                    state: &inp.profile.state,
+                    early_withdrawal_penalty,
+                };
+                tax = compute_taxes(&input, &inp.tax_tables);
+
+                // MAGI (Phase 3, feature 2) adds back the untaxed portion of
+                // Social Security to AGI; the ACA subsidy (when in its window)
+                // is based on it.
+                let mut new_subsidy = 0.0;
+                if aca_window {
+                    let magi = compute_magi(&tax, ss_benefits);
+                    aca = compute_subsidy(
+                        &AcaInput {
+                            year,
+                            inflation_rate: inp.inflation_rate,
+                            magi,
+                            household_size,
+                            benchmark_annual_premium: benchmark_this_year,
+                        },
+                        &inp.aca_tables,
+                    );
+                    new_subsidy = aca.subsidy;
+                }
+
+                let converged = (tax.total_tax - tax_estimate).abs() < 0.5
+                    && (new_subsidy - subsidy).abs() < 0.5;
+                tax_estimate = tax.total_tax;
+                subsidy = new_subsidy;
+                if converged {
+                    break;
+                }
             }
 
-            let converged = (tax.total_tax - tax_estimate).abs() < 0.5
-                && (new_subsidy - subsidy).abs() < 0.5;
-            tax_estimate = tax.total_tax;
-            subsidy = new_subsidy;
-            if converged {
-                break;
+            // ACA-aware: the draws that fund spending, and the conversion's own
+            // tax, add to MAGI after the conversion was sized. Search for the
+            // largest conversion that keeps MAGI under the cutoff: trim by the
+            // excess, then interpolate between the conversions tried. The last
+            // pass always runs the largest conversion known to be under.
+            if roth_mode == RothConversionModeKind::AcaAware && roth_conversion > 0.0 && attempt < ACA_AWARE_MAX_ATTEMPTS {
+                if let Some(cutoff) = aca_cutoff_magi {
+                    let target = cutoff - ACA_AWARE_CONVERSION_BUFFER;
+                    let now = (roth_conversion, compute_magi(&tax, ss_benefits));
+                    if now.1 > target + ACA_AWARE_TOLERANCE {
+                        over_cutoff = Some(now);
+                    } else {
+                        under_cutoff = Some(now);
+                        if over_cutoff.is_none() || target - now.1 <= ACA_AWARE_TOLERANCE {
+                            break;
+                        }
+                    }
+                    conversion_cap = if attempt == ACA_AWARE_MAX_ATTEMPTS - 1 {
+                        under_cutoff.map_or(0.0, |u| u.0)
+                    } else if let (Some(under), Some(over)) = (under_cutoff, over_cutoff) {
+                        if over.1 > under.1 {
+                            under.0 + (target - under.1) * (over.0 - under.0) / (over.1 - under.1)
+                        } else {
+                            (roth_conversion - (now.1 - target)).max(0.0)
+                        }
+                    } else {
+                        (roth_conversion - (now.1 - target)).max(0.0)
+                    };
+                    continue;
+                }
             }
+            break;
         }
 
         // Apply the settled withdrawal plan to real balances and basis.
@@ -1609,6 +1703,111 @@ fn plan_irmaa_aware_roth_conversion(
         irmaa_room
     };
     room.min(deferred_available)
+}
+
+/// Tax position for the year before any spending-driven withdrawal: this
+/// year's income without conversion draws or realized gains. The room the
+/// conversion planners fill is measured against it.
+#[allow(clippy::too_many_arguments)]
+fn baseline_tax(
+    inp: &ProjectionInputs,
+    filing_status: FilingStatusKind,
+    year: i32,
+    seniors: u8,
+    baseline_ordinary_income: f64,
+    qualified_dividends: f64,
+    ss_benefits: f64,
+) -> TaxResult {
+    compute_taxes(
+        &TaxInput {
+            early_withdrawal_penalty: 0.0,
+            year,
+            filing_status,
+            inflation_rate: inp.inflation_rate,
+            seniors_65_plus: seniors,
+            ordinary_income: baseline_ordinary_income,
+            qualified_dividends,
+            long_term_capital_gains: 0.0,
+            social_security_benefits: ss_benefits,
+            state: &inp.profile.state,
+        },
+        &inp.tax_tables,
+    )
+}
+
+/// Whether `year` is inside the configured Roth conversion window.
+fn in_conversion_window(inp: &ProjectionInputs, year: i32) -> bool {
+    inp.roth_conversion_start_year.map_or(true, |s| year >= s)
+        && inp.roth_conversion_end_year.map_or(true, |e| year <= e)
+}
+
+/// Tax-deferred dollars available to convert.
+fn deferred_available(inp: &ProjectionInputs, balances: &[f64], order: &[usize]) -> f64 {
+    order
+        .iter()
+        .filter(|&&i| inp.accounts[i].category == "tax_deferred")
+        .map(|&i| balances[i])
+        .sum()
+}
+
+/// ACA-aware Roth conversion: convert up to the room under the ACA cutoff
+/// (`cutoff_magi`), given the income already in the year (RMD, dividends,
+/// Social Security). A nonzero ceiling is an extra cap. In years the cutoff
+/// doesn't apply (`None`), fill the flat ceiling instead. The room ignores
+/// spending-driven draws; the year solver trims the conversion for them.
+#[allow(clippy::too_many_arguments)]
+fn plan_aca_aware_roth_conversion(
+    inp: &ProjectionInputs,
+    filing_status: FilingStatusKind,
+    year: i32,
+    seniors: u8,
+    baseline_ordinary_income: f64,
+    qualified_dividends: f64,
+    ss_benefits: f64,
+    balances: &[f64],
+    order: &[usize],
+    roth_dest: Option<usize>,
+    cutoff_magi: Option<f64>,
+) -> f64 {
+    if roth_dest.is_none() || !in_conversion_window(inp, year) {
+        return 0.0;
+    }
+    let available = deferred_available(inp, balances, order);
+    if available <= 0.0 {
+        return 0.0;
+    }
+    let base = baseline_tax(
+        inp,
+        filing_status,
+        year,
+        seniors,
+        baseline_ordinary_income,
+        qualified_dividends,
+        ss_benefits,
+    );
+    let ceiling_room = if inp.roth_conversion_ceiling > 0.0 {
+        Some(
+            (inp.roth_conversion_ceiling + base.standard_deduction - base.adjusted_gross_income)
+                .max(0.0),
+        )
+    } else {
+        None
+    };
+
+    let room = match cutoff_magi {
+        Some(cutoff) => {
+            // MAGI is AGI plus untaxed Social Security; convert the target to AGI.
+            let untaxed_ss = ss_benefits - base.taxable_social_security;
+            let target_agi = cutoff - ACA_AWARE_CONVERSION_BUFFER - untaxed_ss;
+            let aca_room = (target_agi - base.adjusted_gross_income).max(0.0);
+            ceiling_room.map_or(aca_room, |c| aca_room.min(c))
+        }
+        None => match ceiling_room {
+            Some(c) => c,
+            None => return 0.0,
+        },
+    };
+    room.min(available)
 }
 
 /// Size this year's voluntary bracket-filling withdrawal for the
@@ -3289,5 +3488,102 @@ mod tests {
         let shocked_y0 = &shocked.annual[0];
         assert_eq!(unshocked_y0.year, shocked_y0.year);
         assert!(shocked_y0.ending_balance > unshocked_y0.ending_balance);
+    }
+
+    // ---- ACA-aware Roth conversion --------------------------------------------
+
+    /// A single filer, 60, who gets an ACA subsidy in 2026: 400% of the 2025
+    /// poverty line (15,650) is 62,600 of MAGI.
+    fn aca_aware_inputs<'a>(
+        p: &'a Profile,
+        accounts: &'a [Account],
+        spend: &'a [SpendingItem],
+        mode: &str,
+        ceiling: f64,
+    ) -> ProjectionInputs<'a> {
+        let mut inp = base_inputs(p, accounts, &[], spend, &[]);
+        inp.aca_tables = crate::aca::AcaTables::built_in();
+        inp.aca_benchmark_annual_premium = 10_000.0;
+        inp.roth_conversion_mode = mode.to_string();
+        inp.roth_conversion_ceiling = ceiling;
+        inp
+    }
+
+    fn aca_aware_accounts() -> Vec<Account> {
+        vec![
+            account("brk", "taxable", 500_000.0, 0.0),
+            account("ira", "tax_deferred", 1_000_000.0, 0.0),
+            account("roth", "tax_free", 10_000.0, 0.0),
+        ]
+    }
+
+    #[test]
+    fn aca_aware_converts_up_to_the_cutoff_when_spending_does_not_add_to_magi() {
+        // Spending comes from a taxable account with no gains, so MAGI is the conversion.
+        let p = profile(1966, 2036 - 1966);
+        let accts = aca_aware_accounts();
+        let spend = [spending("Living", "essential", 30_000.0, "annual", false)];
+        let out = run_projection(&aca_aware_inputs(&p, &accts, &spend, "aca_aware", 0.0));
+        let y = &out.annual[0];
+        assert!((y.roth_conversion - 62_599.0).abs() < 0.01, "{}", y.roth_conversion);
+        assert!(y.tax.magi <= 62_600.0);
+        assert!(y.aca.eligible);
+        assert!(y.aca.subsidy > 0.0);
+    }
+
+    #[test]
+    fn aca_aware_trims_the_conversion_for_draws_that_fund_spending_and_tax() {
+        // Spending and tax come out of the IRA, adding to MAGI on top of the conversion.
+        let p = profile(1966, 2036 - 1966);
+        let accts = [
+            account("ira", "tax_deferred", 1_000_000.0, 0.0),
+            account("roth", "tax_free", 10_000.0, 0.0),
+        ];
+        let spend = [spending("Living", "essential", 30_000.0, "annual", false)];
+        let out = run_projection(&aca_aware_inputs(&p, &accts, &spend, "aca_aware", 0.0));
+        let y = &out.annual[0];
+        println!("conversion {} magi {} subsidy {}", y.roth_conversion, y.tax.magi, y.aca.subsidy);
+        assert!(y.roth_conversion > 15_000.0 && y.roth_conversion < 40_000.0);
+        assert!(y.tax.magi <= 62_600.0);
+        assert!(y.tax.magi > 62_000.0);
+        assert!(y.aca.eligible);
+        assert!(y.aca.subsidy > 0.0);
+    }
+
+    #[test]
+    fn aca_aware_flat_ceiling_is_an_extra_cap() {
+        let p = profile(1966, 2036 - 1966);
+        let accts = aca_aware_accounts();
+        let spend = [spending("Living", "essential", 30_000.0, "annual", false)];
+        let out = run_projection(&aca_aware_inputs(&p, &accts, &spend, "aca_aware", 20_000.0));
+        let y = &out.annual[0];
+        assert!(y.tax.taxable_income <= 20_000.0 + 0.01);
+        assert!(y.roth_conversion > 0.0);
+    }
+
+    #[test]
+    fn aca_aware_without_a_cutoff_fills_the_flat_ceiling_like_the_fixed_mode() {
+        // 66: no ACA subsidy window, so the cutoff doesn't apply.
+        let p = profile(1960, 2036 - 1960);
+        let accts = aca_aware_accounts();
+        let spend = [spending("Living", "essential", 30_000.0, "annual", false)];
+        let aware = run_projection(&aca_aware_inputs(&p, &accts, &spend, "aca_aware", 50_000.0));
+        let fixed = run_projection(&aca_aware_inputs(&p, &accts, &spend, "fixed_ceiling", 50_000.0));
+        assert!(aware.annual[0].roth_conversion > 0.0);
+        assert!((aware.annual[0].roth_conversion - fixed.annual[0].roth_conversion).abs() < 0.01);
+
+        let none = run_projection(&aca_aware_inputs(&p, &accts, &spend, "aca_aware", 0.0));
+        assert_eq!(none.annual[0].roth_conversion, 0.0);
+    }
+
+    #[test]
+    fn fixed_ceiling_ignores_the_aca_cutoff_and_loses_the_subsidy() {
+        let p = profile(1966, 2036 - 1966);
+        let accts = aca_aware_accounts();
+        let spend = [spending("Living", "essential", 30_000.0, "annual", false)];
+        let out = run_projection(&aca_aware_inputs(&p, &accts, &spend, "fixed_ceiling", 90_000.0));
+        let y = &out.annual[0];
+        assert!(y.roth_conversion > 62_600.0);
+        assert!(!y.aca.eligible);
     }
 }

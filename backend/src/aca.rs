@@ -29,6 +29,17 @@
 //! the plan's general inflation rate from the table's base year so they keep
 //! pace across a multi-decade projection.
 //!
+//! ## Enhanced credits ended after 2025
+//!
+//! The curve above (0% through 150% FPL up to 8.5% at 400%, no cliff) is the
+//! enhanced schedule that applied through 2025. From 2026 the original
+//! schedule returns: higher contribution percentages (Rev. Proc. 2025-25) and
+//! no credit at all above 400% of the poverty line. The Marketplace also
+//! measures income against the *prior* year's poverty guidelines. These are
+//! captured by [`AcaRules`]; [`AcaTables::default_2025`] keeps the original
+//! single-curve behavior (the parity fixtures and older tests rely on it) and
+//! [`AcaTables::built_in`] applies the current rules.
+//!
 //! This is a planning approximation, not enrollment advice: it models the
 //! contiguous-48-states FPL, a single benchmark premium supplied by the user,
 //! and does not model Medicaid-expansion gaps between 100% and 138% FPL, the
@@ -50,8 +61,62 @@ pub struct ApplicablePercentageInput {
     pub applicable_percentage: f64,
 }
 
+/// How the credit changes over time. The default ([`AcaRules::legacy`]) applies
+/// one curve to every year, with no cutoff and no guideline lag.
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct AcaRules {
+    /// Last year the table's own (enhanced) curve applies; later years use
+    /// `standard_percentages`. `None` means the enhanced curve applies to every
+    /// year.
+    pub enhanced_through_year: Option<i32>,
+    /// The original applicable-percentage curve `(fpl_percent, fraction)`, for
+    /// years after `enhanced_through_year`. Empty falls back to the enhanced
+    /// curve.
+    pub standard_percentages: Vec<(f64, f64)>,
+    /// In years on the standard schedule, no credit above this percent of the
+    /// poverty line. `None` means no limit.
+    pub cliff_fpl_percent: Option<f64>,
+    /// Years the poverty guidelines lag the tax year. The Marketplace uses the
+    /// prior year's guidelines, so 1.
+    pub guideline_lag_years: i32,
+}
+
+impl AcaRules {
+    /// One curve for every year, no cutoff, no lag.
+    pub fn legacy() -> Self {
+        AcaRules::default()
+    }
+
+    /// Enhanced credits through 2025, then the original schedule as indexed for
+    /// 2026 (Rev. Proc. 2025-25): 2.10% below 133% of the poverty line, rising
+    /// through 3.14–4.19% (133–150%), 4.19–6.60% (150–200%), 6.60–8.44%
+    /// (200–250%) and 8.44–9.96% (250–300%), then 9.96% to 400%, with no
+    /// credit beyond. Later years hold the 2026 percentages.
+    pub fn current() -> Self {
+        AcaRules {
+            enhanced_through_year: Some(2025),
+            standard_percentages: current_standard_percentages(),
+            cliff_fpl_percent: Some(400.0),
+            guideline_lag_years: 1,
+        }
+    }
+}
+
+/// The 2026 original-schedule breakpoints. Two points at 133% make a step.
+pub fn current_standard_percentages() -> Vec<(f64, f64)> {
+    vec![
+        (133.0, 0.0210),
+        (133.0, 0.0314),
+        (150.0, 0.0419),
+        (200.0, 0.0660),
+        (250.0, 0.0844),
+        (300.0, 0.0996),
+        (400.0, 0.0996),
+    ]
+}
+
 /// The reference parameters the ACA engine reads. Built from database rows (see
-/// `crate::models::aca`) or from the built-in [`AcaTables::default_2025`].
+/// `crate::models::aca`) or from the built-in [`AcaTables::built_in`].
 #[derive(Debug, Clone)]
 pub struct AcaTables {
     /// Year the loaded FPL guidelines were published for; the engine indexes
@@ -61,14 +126,30 @@ pub struct AcaTables {
     fpl: HashMap<i32, f64>,
     /// Applicable-percentage curve, sorted ascending by `fpl_percent`.
     applicable: Vec<(f64, f64)>,
+    /// How the credit changes by year.
+    pub rules: AcaRules,
+    /// `rules.standard_percentages`, sorted ascending by `fpl_percent`.
+    standard: Vec<(f64, f64)>,
 }
 
 impl AcaTables {
     /// Assemble tables from plain row inputs (as loaded from the database).
+    #[allow(dead_code)] // the database loader uses `from_inputs_with_rules`
     pub fn from_inputs(
         base_year: i32,
         fpl_rows: Vec<FplInput>,
         applicable_rows: Vec<ApplicablePercentageInput>,
+    ) -> Self {
+        Self::from_inputs_with_rules(base_year, fpl_rows, applicable_rows, AcaRules::legacy())
+    }
+
+    /// Like [`AcaTables::from_inputs`], with the rules for how the credit
+    /// changes by year.
+    pub fn from_inputs_with_rules(
+        base_year: i32,
+        fpl_rows: Vec<FplInput>,
+        applicable_rows: Vec<ApplicablePercentageInput>,
+        rules: AcaRules,
     ) -> Self {
         let mut fpl: HashMap<i32, f64> = HashMap::new();
         for r in fpl_rows {
@@ -79,18 +160,32 @@ impl AcaTables {
             .map(|r| (r.fpl_percent, r.applicable_percentage))
             .collect();
         applicable.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal));
+        let mut standard = rules.standard_percentages.clone();
+        standard.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal));
         AcaTables {
             base_year,
             fpl,
             applicable,
+            rules,
+            standard,
         }
     }
 
-    /// The built-in 2025 ACA parameters — the single source of truth used both
-    /// to seed the tables and to drive unit tests.
+    /// The 2025 ACA parameters with the original single-curve behavior: the
+    /// enhanced curve for every year, no cutoff, no lag. The parity fixtures
+    /// and the engine's older unit tests use it.
+    #[allow(dead_code)] // used by tests
     pub fn default_2025() -> Self {
         let (year, fpl, applicable) = default_2025_inputs();
         Self::from_inputs(year, fpl, applicable)
+    }
+
+    /// The app's built-in parameters: the 2025 guidelines and enhanced curve,
+    /// then the original schedule from 2026 (see [`AcaRules::current`]). The
+    /// single source of truth used both to seed the tables and in tests.
+    pub fn built_in() -> Self {
+        let (year, fpl, applicable) = default_2025_inputs();
+        Self::from_inputs_with_rules(year, fpl, applicable, AcaRules::current())
     }
 
     /// Base-year Federal Poverty Line for a household size, falling back to the
@@ -114,25 +209,65 @@ impl AcaTables {
     /// a given percentage of the Federal Poverty Line, linearly interpolated
     /// between breakpoints and clamped to the ends of the curve.
     fn applicable_percentage(&self, fpl_percent: f64) -> f64 {
-        let curve = &self.applicable;
-        match curve.first() {
-            None => 0.0,
-            Some(&(first_x, first_y)) => {
-                if fpl_percent <= first_x {
-                    return first_y;
-                }
-                for w in curve.windows(2) {
-                    let (x0, y0) = w[0];
-                    let (x1, y1) = w[1];
-                    if fpl_percent <= x1 {
-                        let t = if x1 > x0 { (fpl_percent - x0) / (x1 - x0) } else { 0.0 };
-                        return y0 + t * (y1 - y0);
-                    }
-                }
-                curve.last().map(|&(_, y)| y).unwrap_or(0.0)
-            }
+        interpolate(&self.applicable, fpl_percent)
+    }
+
+    /// Whether `year` is on the enhanced schedule (the table's own curve).
+    fn is_enhanced(&self, year: i32) -> bool {
+        self.rules.enhanced_through_year.map_or(true, |last| year <= last)
+    }
+
+    /// The applicable percentage for a tax year: the enhanced curve through
+    /// `rules.enhanced_through_year`, the standard curve after it.
+    fn applicable_percentage_for_year(&self, fpl_percent: f64, year: i32) -> f64 {
+        if self.is_enhanced(year) || self.standard.is_empty() {
+            self.applicable_percentage(fpl_percent)
+        } else {
+            interpolate(&self.standard, fpl_percent)
         }
     }
+
+    /// The poverty line for a household in a tax year: the base-year
+    /// guidelines, indexed, lagged by `rules.guideline_lag_years`.
+    pub fn poverty_line(&self, year: i32, inflation_rate_pct: f64, household_size: i32) -> f64 {
+        let factor = inflation_factor(
+            self.base_year,
+            year - self.rules.guideline_lag_years,
+            inflation_rate_pct,
+        );
+        self.base_fpl(household_size.max(1)) * factor
+    }
+
+    /// The highest MAGI that still gets a credit in `year`, or `None` when
+    /// there is no cutoff (enhanced years, or no cutoff configured).
+    pub fn cutoff_magi(&self, year: i32, inflation_rate_pct: f64, household_size: i32) -> Option<f64> {
+        if self.is_enhanced(year) {
+            return None;
+        }
+        let cliff = self.rules.cliff_fpl_percent?;
+        Some(self.poverty_line(year, inflation_rate_pct, household_size) * cliff / 100.0)
+    }
+}
+
+/// Linear interpolation along `(fpl_percent, fraction)` points sorted
+/// ascending, flat before the first and after the last. Two points at the same
+/// percentage make a step.
+fn interpolate(curve: &[(f64, f64)], fpl_percent: f64) -> f64 {
+    let Some(&(first_x, first_y)) = curve.first() else {
+        return 0.0;
+    };
+    if fpl_percent <= first_x {
+        return first_y;
+    }
+    for w in curve.windows(2) {
+        let (x0, y0) = w[0];
+        let (x1, y1) = w[1];
+        if fpl_percent <= x1 {
+            let t = if x1 > x0 { (fpl_percent - x0) / (x1 - x0) } else { 0.0 };
+            return y0 + t * (y1 - y0);
+        }
+    }
+    curve.last().map(|&(_, y)| y).unwrap_or(0.0)
 }
 
 /// Inflation index factor applied to the FPL guidelines for a projection year,
@@ -181,17 +316,25 @@ pub struct AcaResult {
 
 /// Compute a household's ACA premium tax credit for one year using `tables`.
 pub fn compute_subsidy(inp: &AcaInput, tables: &AcaTables) -> AcaResult {
-    let factor = inflation_factor(tables.base_year, inp.year, inp.inflation_rate);
-    let fpl = tables.base_fpl(inp.household_size.max(1)) * factor;
+    // The Marketplace measures income against the prior year's guidelines.
+    let fpl = tables.poverty_line(inp.year, inp.inflation_rate, inp.household_size);
     let magi = inp.magi.max(0.0);
     let fpl_percent = if fpl > 0.0 { magi / fpl * 100.0 } else { 0.0 };
 
     // A premium tax credit requires a benchmark plan and income at or above the
     // poverty line; below 100% FPL the household falls to Medicaid, not the
     // marketplace subsidy.
-    let eligible = inp.benchmark_annual_premium > 0.0 && fpl > 0.0 && fpl_percent >= 100.0;
+    // Once the enhanced schedule ends, income above the cutoff gets no credit.
+    let mut eligible = inp.benchmark_annual_premium > 0.0 && fpl > 0.0 && fpl_percent >= 100.0;
+    if !tables.is_enhanced(inp.year) {
+        if let Some(cliff) = tables.rules.cliff_fpl_percent {
+            if fpl_percent > cliff {
+                eligible = false;
+            }
+        }
+    }
 
-    let applicable_percentage = tables.applicable_percentage(fpl_percent);
+    let applicable_percentage = tables.applicable_percentage_for_year(fpl_percent, inp.year);
     let expected_contribution = applicable_percentage * magi;
     let subsidy = if eligible {
         (inp.benchmark_annual_premium - expected_contribution).max(0.0)
@@ -352,5 +495,103 @@ mod tests {
         let later = compute_subsidy(&i, &tables());
         assert!(later.federal_poverty_line > now.federal_poverty_line);
         assert!(later.fpl_percent < now.fpl_percent);
+    }
+
+    // ---- 2026 rules: enhanced credits end, the cutoff returns, guidelines lag.
+
+    fn rules_input(year: i32, magi: f64, size: i32) -> AcaInput {
+        AcaInput {
+            year,
+            inflation_rate: 0.0,
+            magi,
+            household_size: size,
+            benchmark_annual_premium: 20_000.0,
+        }
+    }
+
+    #[test]
+    fn legacy_tables_use_one_curve_for_every_year() {
+        let out = compute_subsidy(&rules_input(2027, 90_000.0, 2), &AcaTables::default_2025());
+        assert!(out.eligible);
+        assert!((out.applicable_percentage - 0.085).abs() < 1e-9);
+    }
+
+    #[test]
+    fn enhanced_curve_applies_through_2025() {
+        // 70,000 / 21,150 = 330.97% of the poverty line.
+        let out = compute_subsidy(&rules_input(2025, 70_000.0, 2), &AcaTables::built_in());
+        assert!(out.eligible);
+        assert!((out.applicable_percentage - (0.06 + 0.309693 * 0.025)).abs() < 1e-4);
+    }
+
+    #[test]
+    fn original_schedule_returns_in_2026() {
+        let out = compute_subsidy(&rules_input(2026, 70_000.0, 2), &AcaTables::built_in());
+        assert!(out.eligible);
+        assert!((out.applicable_percentage - 0.0996).abs() < 1e-9);
+        assert!((out.expected_contribution - 6_972.0).abs() < 0.01);
+        assert!((out.subsidy - 13_028.0).abs() < 0.01);
+    }
+
+    #[test]
+    fn no_credit_above_400_percent_from_2026() {
+        // 400% of the two-person line is exactly 84,600: still eligible there.
+        let at_line = compute_subsidy(&rules_input(2026, 84_600.0, 2), &AcaTables::built_in());
+        assert!(at_line.eligible);
+        assert!((at_line.subsidy - (20_000.0 - 0.0996 * 84_600.0)).abs() < 0.01);
+
+        let over = compute_subsidy(&rules_input(2026, 84_601.0, 2), &AcaTables::built_in());
+        assert!(!over.eligible);
+        assert_eq!(over.subsidy, 0.0);
+        assert_eq!(compute_subsidy(&rules_input(2026, 90_000.0, 2), &AcaTables::built_in()).subsidy, 0.0);
+    }
+
+    #[test]
+    fn standard_curve_follows_the_indexed_bands() {
+        let pct = |magi: f64| {
+            compute_subsidy(&rules_input(2026, magi, 1), &AcaTables::built_in()).applicable_percentage
+        };
+        let line = 15_650.0;
+        assert!((pct(1.20 * line) - 0.0210).abs() < 1e-9); // below 133%
+        assert!((pct(1.50 * line) - 0.0419).abs() < 1e-9);
+        assert!((pct(2.00 * line) - 0.0660).abs() < 1e-9);
+        assert!((pct(2.50 * line) - 0.0844).abs() < 1e-9);
+        assert!((pct(3.00 * line) - 0.0996).abs() < 1e-9);
+        assert!((pct(2.25 * line) - 0.0752).abs() < 1e-9); // halfway 200%..250%
+    }
+
+    #[test]
+    fn an_extension_keeps_the_enhanced_schedule_and_drops_the_cutoff() {
+        let (year, fpl, applicable) = default_2025_inputs();
+        let mut rules = AcaRules::current();
+        rules.enhanced_through_year = Some(2030);
+        let tables = AcaTables::from_inputs_with_rules(year, fpl, applicable, rules);
+        let out = compute_subsidy(&rules_input(2026, 90_000.0, 2), &tables);
+        assert!(out.eligible);
+        assert!((out.applicable_percentage - 0.085).abs() < 1e-9);
+        assert!(tables.cutoff_magi(2026, 0.0, 2).is_none());
+    }
+
+    #[test]
+    fn poverty_guidelines_lag_the_tax_year_by_one() {
+        let at = |year: i32, tables: &AcaTables| {
+            let mut i = rules_input(year, 50_000.0, 1);
+            i.inflation_rate = 2.0;
+            compute_subsidy(&i, tables).federal_poverty_line
+        };
+        let built_in = AcaTables::built_in();
+        assert!((at(2026, &built_in) - 15_650.0).abs() < 1e-9);
+        assert!((at(2027, &built_in) - 15_650.0 * 1.02).abs() < 1e-9);
+        // The legacy tables index from the tax year itself.
+        assert!((at(2026, &AcaTables::default_2025()) - 15_650.0 * 1.02).abs() < 1e-9);
+    }
+
+    #[test]
+    fn cutoff_is_400_percent_of_the_poverty_line_from_2026() {
+        let t = AcaTables::built_in();
+        assert_eq!(t.cutoff_magi(2026, 0.0, 1), Some(62_600.0));
+        assert_eq!(t.cutoff_magi(2026, 0.0, 2), Some(84_600.0));
+        assert_eq!(t.cutoff_magi(2025, 0.0, 1), None);
+        assert_eq!(AcaTables::default_2025().cutoff_magi(2026, 0.0, 1), None);
     }
 }

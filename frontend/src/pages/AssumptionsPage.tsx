@@ -35,6 +35,10 @@ const ROTH_CONVERSION_MODE_OPTIONS: { value: RothConversionMode; label: string }
     value: "irmaa_aware",
     label: "IRMAA & RMD aware (target the next Medicare IRMAA tier, tapering as RMDs grow)",
   },
+  {
+    value: "aca_aware",
+    label: "ACA aware (stay under the ACA subsidy cutoff; flat ceiling in other years)",
+  },
 ];
 
 /** Parse an optional year input; blank -> null. */
@@ -234,7 +238,9 @@ export function AssumptionsPage() {
             hint={
               form.roth_conversion_mode === "irmaa_aware"
                 ? "Optional extra cap on top of the IRMAA-based target. 0 leaves it uncapped."
-                : "Fill each year's taxable income to this level. 0 disables conversions."
+                : form.roth_conversion_mode === "aca_aware"
+                  ? "Optional extra cap on top of the ACA cutoff. In years the cutoff doesn't apply, this is the flat ceiling; 0 means no conversion then."
+                  : "Fill each year's taxable income to this level. 0 disables conversions."
             }
           >
             <TextInput

@@ -227,7 +227,7 @@ export interface LifeEventRequest {
 export type WithdrawalStrategy = "conventional" | "tax_optimized" | "maximize_income";
 
 /** Roth conversion sizing mode (Phase 3, feature 6). */
-export type RothConversionMode = "fixed_ceiling" | "irmaa_aware";
+export type RothConversionMode = "fixed_ceiling" | "irmaa_aware" | "aca_aware";
 
 export interface Assumptions {
   inflation_rate: number;
@@ -279,7 +279,7 @@ export interface ProjectionAssumptions {
   medicare_part_b_annual_premium: number;
   avoid_early_withdrawal_penalty: boolean;
   medicare_enrollment_age: number;
-  /** Roth conversion sizing mode (feature 6): "fixed_ceiling" or "irmaa_aware". */
+  /** Roth conversion sizing mode (feature 6): "fixed_ceiling", "irmaa_aware" or "aca_aware". */
   roth_conversion_mode: string;
   is_default: boolean;
 }
