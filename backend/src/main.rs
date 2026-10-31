@@ -11,6 +11,8 @@ mod monte_carlo;
 mod openapi;
 mod plaid_client;
 mod projection;
+#[cfg(test)]
+mod fixture_parity;
 mod reconciliation;
 mod schema;
 mod tax;

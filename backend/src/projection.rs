@@ -466,6 +466,7 @@ fn person_milestones(dob: NaiveDate, who: &str) -> Vec<(i32, Milestone)> {
                 label: "Penalty-free withdrawals".into(),
                 detail: format!("Penalty-free IRA and 401(k) withdrawals for {who} (age 59½)."),
                 age: 59,
+                is_regulatory: false,
             },
         ));
     }
@@ -475,6 +476,7 @@ fn person_milestones(dob: NaiveDate, who: &str) -> Vec<(i32, Milestone)> {
             label: "Social Security eligibility".into(),
             detail: format!("Earliest Social Security for {who} (age 62, reduced benefit)."),
             age: 62,
+            is_regulatory: false,
         },
     ));
     // Medicare enrollment window (Phase 3, feature 3): the Initial Enrollment
@@ -492,6 +494,7 @@ fn person_milestones(dob: NaiveDate, who: &str) -> Vec<(i32, Milestone)> {
                     "The Medicare Initial Enrollment Period begins for {who} — 3 months before turning 65."
                 ),
                 age: 64,
+                is_regulatory: true,
             },
         ));
     }
@@ -501,6 +504,7 @@ fn person_milestones(dob: NaiveDate, who: &str) -> Vec<(i32, Milestone)> {
             label: "Medicare eligibility".into(),
             detail: format!("Medicare eligibility begins for {who} (age 65)."),
             age: 65,
+            is_regulatory: false,
         },
     ));
     if let Some(y) = milestone_year(dob, 65 * 12 + 3) {
@@ -513,6 +517,7 @@ fn person_milestones(dob: NaiveDate, who: &str) -> Vec<(i32, Milestone)> {
                      without other creditable coverage risks a lifetime Part B late-enrollment penalty."
                 ),
                 age: 65,
+                is_regulatory: true,
             },
         ));
     }
@@ -530,6 +535,7 @@ fn person_milestones(dob: NaiveDate, who: &str) -> Vec<(i32, Milestone)> {
                 label: "Full retirement age".into(),
                 detail: format!("Full Social Security retirement age for {who} ({fra})."),
                 age: yrs as i32,
+                is_regulatory: false,
             },
         ));
     }
@@ -539,6 +545,7 @@ fn person_milestones(dob: NaiveDate, who: &str) -> Vec<(i32, Milestone)> {
             label: "Maximum Social Security".into(),
             detail: format!("Delayed retirement credits stop growing for {who} (age 70)."),
             age: 70,
+            is_regulatory: false,
         },
     ));
     let ra = rmd_age(by);
@@ -548,6 +555,7 @@ fn person_milestones(dob: NaiveDate, who: &str) -> Vec<(i32, Milestone)> {
             label: "RMDs begin".into(),
             detail: format!("Required minimum distributions must begin for {who} (age {ra})."),
             age: ra,
+            is_regulatory: true,
         },
     ));
     out
@@ -566,6 +574,7 @@ fn build_milestones(profile: &Profile, start_year: i32, end_year: i32) -> HashMa
             label: "Planned retirement".into(),
             detail: "Your planned retirement date.".into(),
             age: profile.retirement_date.year() - profile.date_of_birth.year(),
+            is_regulatory: false,
         },
     ));
 

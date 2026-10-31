@@ -190,6 +190,9 @@ pub struct Milestone {
     pub detail: String,
     /// Age of the relevant person when the milestone is reached.
     pub age: i32,
+    /// Carries a real compliance deadline (Medicare enrollment, RMDs), as
+    /// opposed to a planning landmark.
+    pub is_regulatory: bool,
 }
 
 /// One account's balance movement within a single projection year, for the
